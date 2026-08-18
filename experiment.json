@@ -1,0 +1,22 @@
+{
+  "name": "Mardu vs Dimir pilot",
+  "deck_dir": "decks",
+  "games_preboard": 100,
+  "games_postboard": 200,
+  "clock_seconds": 120,
+  "matchups": [
+    {
+      "name": "Mardu Energy vs Dimir Tempo",
+      "deck_a": "mardu-energy.dck",
+      "deck_b": "dimir-tempo.dck",
+      "sideboard_a": {
+        "in": ["2 Fatal Push", "2 Suncleanser"],
+        "out": ["4 Thoughtseize"]
+      },
+      "sideboard_b": {
+        "in": ["2 Toxic Deluge", "2 Stern Scolding"],
+        "out": ["2 Spell Pierce", "2 Thoughtseize"]
+      }
+    }
+  ]
+}

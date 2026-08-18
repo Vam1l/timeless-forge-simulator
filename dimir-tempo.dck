@@ -1,0 +1,34 @@
+[metadata]
+Name=Dimir Tempo Example
+
+[Main]
+4 Deathrite Shaman
+4 Psychic Frog
+4 Orcish Bowmasters
+3 Tamiyo, Inquisitive Student
+2 Nethergoyf
+4 Brainstorm
+4 Fatal Push
+4 Mana Drain
+4 Thoughtseize
+3 Treasure Cruise
+2 Spell Pierce
+2 Spell Snare
+2 Drown in the Loch
+4 Polluted Delta
+4 Bloodstained Mire
+3 Watery Grave
+2 Undercity Sewers
+2 Darkslick Shores
+1 Island
+1 Swamp
+1 Mystic Sanctuary
+
+[Sideboard]
+3 Stern Scolding
+2 Surgical Extraction
+2 Unlicensed Hearse
+2 Toxic Deluge
+2 Pithing Needle
+2 Mystical Dispute
+2 Sheoldred's Edict

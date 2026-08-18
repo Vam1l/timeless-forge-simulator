@@ -1,0 +1,15 @@
+{
+  "name": "Pipeline smoke test",
+  "deck_dir": "decks",
+  "output_dir": "../results/mock",
+  "games_preboard": 20,
+  "games_postboard": 20,
+  "matchups": [
+    {
+      "deck_a": "mardu-energy.dck",
+      "deck_b": "dimir-tempo.dck",
+      "sideboard_a": {"in": ["2 Fatal Push"], "out": ["2 Thoughtseize"]},
+      "sideboard_b": {"in": ["2 Toxic Deluge"], "out": ["2 Thoughtseize"]}
+    }
+  ]
+}
