@@ -6,6 +6,8 @@ on:
     branches:
       - ai-balance/peasant-10deck-roundrobin
 
+permissions: read-all
+
 env:
   FORGE_VERSION: "2.0.14"
   JAVA_VERSION: "17"

@@ -69,11 +69,14 @@ def main():
     for log_file in sorted(all_results_dir.rglob("*.log")):
         all_raw_logs.append(log_file)
 
-    # Copy raw logs to output
+    # Copy raw logs to output, preserving batch directory structure to avoid collisions
     logs_dir = output_dir / "raw-logs"
     logs_dir.mkdir(exist_ok=True)
     for log_file in all_raw_logs:
-        dest = logs_dir / log_file.name
+        rel_parent = log_file.parent.name
+        batch_log_dir = logs_dir / rel_parent
+        batch_log_dir.mkdir(exist_ok=True)
+        dest = batch_log_dir / log_file.name
         dest.write_text(log_file.read_text())
     
     # Write aggregated CSV
