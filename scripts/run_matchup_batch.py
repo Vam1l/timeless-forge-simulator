@@ -35,6 +35,13 @@ def main():
     
     # Create batch config
     batch_config = dict(full_config)
+    original_deck_dir = Path(full_config.get('deck_dir', 'decks'))
+    if (repo_root / original_deck_dir).exists():
+        batch_config['deck_dir'] = str((repo_root / original_deck_dir).resolve())
+    elif (config_path.parent / original_deck_dir).exists():
+        batch_config['deck_dir'] = str((config_path.parent / original_deck_dir).resolve())
+    else:
+        batch_config['deck_dir'] = str(original_deck_dir.resolve())
     batch_config['matchups'] = filtered_matchups
     batch_config['output_dir'] = str(args.output)
     

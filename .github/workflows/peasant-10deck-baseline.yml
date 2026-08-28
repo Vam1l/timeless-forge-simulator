@@ -41,30 +41,25 @@ jobs:
         run: |
           python -c "import json; data = json.load(open('battlebox/roundrobin.json')); print(f'Total matchups: {len(data[\"matchups\"])}')"
 
-  # Download and cache Forge
+  # Download Forge 2.0.14 and upload as artifact
   forge-setup:
     name: Download Forge 2.0.14
     runs-on: ubuntu-latest
     steps:
-      - name: Cache Forge JAR
-        id: cache-forge
-        uses: actions/cache@v4
+      - name: Download Forge distribution
+        run: |
+          curl -sSL -o forge-installer-${{ env.FORGE_VERSION }}.tar.bz2 "https://github.com/Card-Forge/forge/releases/download/forge-${{ env.FORGE_VERSION }}/forge-installer-${{ env.FORGE_VERSION }}.tar.bz2"
+          tar -xjf forge-installer-${{ env.FORGE_VERSION }}.tar.bz2
+          cp forge-gui-desktop-${{ env.FORGE_VERSION }}-jar-with-dependencies.jar forge-${{ env.FORGE_VERSION }}.jar
+          test -f forge-${{ env.FORGE_VERSION }}.jar
+
+      - name: Upload Forge distribution artifact
+        uses: actions/upload-artifact@v4
         with:
+          name: forge-dist-${{ env.FORGE_VERSION }}
           path: |
             forge-${{ env.FORGE_VERSION }}.jar
-          key: forge-${{ env.FORGE_VERSION }}
-          restore-keys: |
-            forge-
-
-      - name: Download Forge (if not cached)
-        if: steps.cache-forge.outputs.cache-hit != 'true'
-        run: |
-          # Note: Replace with actual Forge download URL when available
-          # For now, we'll create a placeholder that the workflow can adapt to
-          echo "Forge 2.0.14 should be downloaded from official Forge repository"
-          echo "Placeholder for Forge JAR at forge-${{ env.FORGE_VERSION }}.jar"
-          # Actual download would be something like:
-          # wget https://github.com/Card-Forge/forge/releases/download/forge-${{ env.FORGE_VERSION }}/forge.jar -O forge-${{ env.FORGE_VERSION }}.jar
+            res/
 
   # 9 parallel simulation jobs (approximately 5 matchups each)
   simulate-batch-1:
@@ -86,19 +81,29 @@ jobs:
           distribution: 'temurin'
           java-version: ${{ env.JAVA_VERSION }}
 
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y xvfb
+
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
 
-      - name: Restore Forge cache
-        uses: actions/cache@v4
+      - name: Download Forge distribution
+        uses: actions/download-artifact@v4
         with:
-          path: forge-${{ env.FORGE_VERSION }}.jar
-          key: forge-${{ env.FORGE_VERSION }}
+          name: forge-dist-${{ env.FORGE_VERSION }}
+          path: ./
+
+      - name: Preflight check Forge JAR
+        run: |
+          test -f forge-${{ env.FORGE_VERSION }}.jar
+          xvfb-run java -jar forge-${{ env.FORGE_VERSION }}.jar sim --help
 
       - name: Run matchups 1–5
         run: |
-          python scripts/run_matchup_batch.py \
+          xvfb-run python scripts/run_matchup_batch.py \
             --matchup-indices 0 1 2 3 4 \
             --forge-jar ./forge-${{ env.FORGE_VERSION }}.jar \
             --output batch-1-results
@@ -128,19 +133,29 @@ jobs:
           distribution: 'temurin'
           java-version: ${{ env.JAVA_VERSION }}
 
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y xvfb
+
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
 
-      - name: Restore Forge cache
-        uses: actions/cache@v4
+      - name: Download Forge distribution
+        uses: actions/download-artifact@v4
         with:
-          path: forge-${{ env.FORGE_VERSION }}.jar
-          key: forge-${{ env.FORGE_VERSION }}
+          name: forge-dist-${{ env.FORGE_VERSION }}
+          path: ./
+
+      - name: Preflight check Forge JAR
+        run: |
+          test -f forge-${{ env.FORGE_VERSION }}.jar
+          xvfb-run java -jar forge-${{ env.FORGE_VERSION }}.jar sim --help
 
       - name: Run matchups 6–10
         run: |
-          python scripts/run_matchup_batch.py \
+          xvfb-run python scripts/run_matchup_batch.py \
             --matchup-indices 5 6 7 8 9 \
             --forge-jar ./forge-${{ env.FORGE_VERSION }}.jar \
             --output batch-2-results
@@ -170,19 +185,29 @@ jobs:
           distribution: 'temurin'
           java-version: ${{ env.JAVA_VERSION }}
 
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y xvfb
+
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
 
-      - name: Restore Forge cache
-        uses: actions/cache@v4
+      - name: Download Forge distribution
+        uses: actions/download-artifact@v4
         with:
-          path: forge-${{ env.FORGE_VERSION }}.jar
-          key: forge-${{ env.FORGE_VERSION }}
+          name: forge-dist-${{ env.FORGE_VERSION }}
+          path: ./
+
+      - name: Preflight check Forge JAR
+        run: |
+          test -f forge-${{ env.FORGE_VERSION }}.jar
+          xvfb-run java -jar forge-${{ env.FORGE_VERSION }}.jar sim --help
 
       - name: Run matchups 11–15
         run: |
-          python scripts/run_matchup_batch.py \
+          xvfb-run python scripts/run_matchup_batch.py \
             --matchup-indices 10 11 12 13 14 \
             --forge-jar ./forge-${{ env.FORGE_VERSION }}.jar \
             --output batch-3-results
@@ -212,19 +237,29 @@ jobs:
           distribution: 'temurin'
           java-version: ${{ env.JAVA_VERSION }}
 
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y xvfb
+
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
 
-      - name: Restore Forge cache
-        uses: actions/cache@v4
+      - name: Download Forge distribution
+        uses: actions/download-artifact@v4
         with:
-          path: forge-${{ env.FORGE_VERSION }}.jar
-          key: forge-${{ env.FORGE_VERSION }}
+          name: forge-dist-${{ env.FORGE_VERSION }}
+          path: ./
+
+      - name: Preflight check Forge JAR
+        run: |
+          test -f forge-${{ env.FORGE_VERSION }}.jar
+          xvfb-run java -jar forge-${{ env.FORGE_VERSION }}.jar sim --help
 
       - name: Run matchups 16–20
         run: |
-          python scripts/run_matchup_batch.py \
+          xvfb-run python scripts/run_matchup_batch.py \
             --matchup-indices 15 16 17 18 19 \
             --forge-jar ./forge-${{ env.FORGE_VERSION }}.jar \
             --output batch-4-results
@@ -254,19 +289,29 @@ jobs:
           distribution: 'temurin'
           java-version: ${{ env.JAVA_VERSION }}
 
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y xvfb
+
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
 
-      - name: Restore Forge cache
-        uses: actions/cache@v4
+      - name: Download Forge distribution
+        uses: actions/download-artifact@v4
         with:
-          path: forge-${{ env.FORGE_VERSION }}.jar
-          key: forge-${{ env.FORGE_VERSION }}
+          name: forge-dist-${{ env.FORGE_VERSION }}
+          path: ./
+
+      - name: Preflight check Forge JAR
+        run: |
+          test -f forge-${{ env.FORGE_VERSION }}.jar
+          xvfb-run java -jar forge-${{ env.FORGE_VERSION }}.jar sim --help
 
       - name: Run matchups 21–25
         run: |
-          python scripts/run_matchup_batch.py \
+          xvfb-run python scripts/run_matchup_batch.py \
             --matchup-indices 20 21 22 23 24 \
             --forge-jar ./forge-${{ env.FORGE_VERSION }}.jar \
             --output batch-5-results
@@ -296,19 +341,29 @@ jobs:
           distribution: 'temurin'
           java-version: ${{ env.JAVA_VERSION }}
 
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y xvfb
+
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
 
-      - name: Restore Forge cache
-        uses: actions/cache@v4
+      - name: Download Forge distribution
+        uses: actions/download-artifact@v4
         with:
-          path: forge-${{ env.FORGE_VERSION }}.jar
-          key: forge-${{ env.FORGE_VERSION }}
+          name: forge-dist-${{ env.FORGE_VERSION }}
+          path: ./
+
+      - name: Preflight check Forge JAR
+        run: |
+          test -f forge-${{ env.FORGE_VERSION }}.jar
+          xvfb-run java -jar forge-${{ env.FORGE_VERSION }}.jar sim --help
 
       - name: Run matchups 26–30
         run: |
-          python scripts/run_matchup_batch.py \
+          xvfb-run python scripts/run_matchup_batch.py \
             --matchup-indices 25 26 27 28 29 \
             --forge-jar ./forge-${{ env.FORGE_VERSION }}.jar \
             --output batch-6-results
@@ -338,19 +393,29 @@ jobs:
           distribution: 'temurin'
           java-version: ${{ env.JAVA_VERSION }}
 
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y xvfb
+
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
 
-      - name: Restore Forge cache
-        uses: actions/cache@v4
+      - name: Download Forge distribution
+        uses: actions/download-artifact@v4
         with:
-          path: forge-${{ env.FORGE_VERSION }}.jar
-          key: forge-${{ env.FORGE_VERSION }}
+          name: forge-dist-${{ env.FORGE_VERSION }}
+          path: ./
+
+      - name: Preflight check Forge JAR
+        run: |
+          test -f forge-${{ env.FORGE_VERSION }}.jar
+          xvfb-run java -jar forge-${{ env.FORGE_VERSION }}.jar sim --help
 
       - name: Run matchups 31–35
         run: |
-          python scripts/run_matchup_batch.py \
+          xvfb-run python scripts/run_matchup_batch.py \
             --matchup-indices 30 31 32 33 34 \
             --forge-jar ./forge-${{ env.FORGE_VERSION }}.jar \
             --output batch-7-results
@@ -380,19 +445,29 @@ jobs:
           distribution: 'temurin'
           java-version: ${{ env.JAVA_VERSION }}
 
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y xvfb
+
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
 
-      - name: Restore Forge cache
-        uses: actions/cache@v4
+      - name: Download Forge distribution
+        uses: actions/download-artifact@v4
         with:
-          path: forge-${{ env.FORGE_VERSION }}.jar
-          key: forge-${{ env.FORGE_VERSION }}
+          name: forge-dist-${{ env.FORGE_VERSION }}
+          path: ./
+
+      - name: Preflight check Forge JAR
+        run: |
+          test -f forge-${{ env.FORGE_VERSION }}.jar
+          xvfb-run java -jar forge-${{ env.FORGE_VERSION }}.jar sim --help
 
       - name: Run matchups 36–40
         run: |
-          python scripts/run_matchup_batch.py \
+          xvfb-run python scripts/run_matchup_batch.py \
             --matchup-indices 35 36 37 38 39 \
             --forge-jar ./forge-${{ env.FORGE_VERSION }}.jar \
             --output batch-8-results
@@ -422,19 +497,29 @@ jobs:
           distribution: 'temurin'
           java-version: ${{ env.JAVA_VERSION }}
 
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y xvfb
+
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
 
-      - name: Restore Forge cache
-        uses: actions/cache@v4
+      - name: Download Forge distribution
+        uses: actions/download-artifact@v4
         with:
-          path: forge-${{ env.FORGE_VERSION }}.jar
-          key: forge-${{ env.FORGE_VERSION }}
+          name: forge-dist-${{ env.FORGE_VERSION }}
+          path: ./
+
+      - name: Preflight check Forge JAR
+        run: |
+          test -f forge-${{ env.FORGE_VERSION }}.jar
+          xvfb-run java -jar forge-${{ env.FORGE_VERSION }}.jar sim --help
 
       - name: Run matchups 41–45
         run: |
-          python scripts/run_matchup_batch.py \
+          xvfb-run python scripts/run_matchup_batch.py \
             --matchup-indices 40 41 42 43 44 \
             --forge-jar ./forge-${{ env.FORGE_VERSION }}.jar \
             --output batch-9-results

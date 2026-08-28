@@ -5,9 +5,11 @@ from datetime import datetime, timezone
 import csv
 import hashlib
 import json
+import os
 from pathlib import Path
 import random
 import re
+import shutil
 import subprocess
 import tempfile
 from typing import Protocol
@@ -51,8 +53,18 @@ class ForgeEngine:
         self.jar, self.java = jar.resolve(), java
 
     def run(self, deck_a: Path, deck_b: Path, games: int, clock: int) -> str:
-        command = [self.java, "-jar", str(self.jar), "sim", "-d", deck_a.name, deck_b.name,
-                   "-D", str(deck_a.parent.resolve()), "-n", str(games), "-q", "-c", str(clock)]
+        for d in (deck_a, deck_b):
+            if d.is_file():
+                for target_dir in [Path("data/decks/constructed"), Path.home() / ".forge/decks/constructed"]:
+                    target_dir.mkdir(parents=True, exist_ok=True)
+                    target_file = target_dir / d.name
+                    if not target_file.exists() or target_file.stat().st_mtime < d.stat().st_mtime:
+                        target_file.write_bytes(d.read_bytes())
+        java_cmd = [self.java]
+        if shutil.which("xvfb-run") and "DISPLAY" not in os.environ and self.java == "java":
+            java_cmd = ["xvfb-run", "-a", self.java]
+        command = java_cmd + ["-jar", str(self.jar), "sim", "-d", deck_a.name, deck_b.name,
+                             "-D", str(deck_a.parent.resolve()), "-n", str(games), "-q", "-c", str(clock)]
         completed = subprocess.run(command, text=True, stdout=subprocess.PIPE,
                                    stderr=subprocess.STDOUT, check=False)
         if completed.returncode:
@@ -100,7 +112,13 @@ def _batch(engine: Engine, matchup: str, phase: str, deck_a: Path, deck_b: Path,
 
 def run_experiment(config_path: Path, engine: Engine) -> Path:
     config = json.loads(config_path.read_text(encoding="utf-8"))
-    deck_dir = (config_path.parent / config.get("deck_dir", "decks")).resolve()
+    raw_deck_dir = Path(config.get("deck_dir", "decks"))
+    if raw_deck_dir.is_absolute():
+        deck_dir = raw_deck_dir
+    elif (config_path.parent / raw_deck_dir).exists():
+        deck_dir = (config_path.parent / raw_deck_dir).resolve()
+    else:
+        deck_dir = raw_deck_dir.resolve()
     run_id = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
     output = (config_path.parent / config.get("output_dir", f"../results/{run_id}")).resolve()
     output.mkdir(parents=True, exist_ok=True)
