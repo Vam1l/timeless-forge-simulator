@@ -4,7 +4,7 @@ Name=Esper Control
 [Main]
 4 Solitude
 4 Dress Down
-3 Counterspell
+4 Counterspell
 3 Daze
 3 Force of Will
 2 Subtlety
@@ -17,10 +17,11 @@ Name=Esper Control
 1 Engineered Explosives
 2 Urza's Saga
 4 Flooded Strand
-2 Scalding Tarn
-2 Mystic Gate
-2 Tundra
-2 Island
-1 Plains
+3 Scalding Tarn
+3 Mystic Gate
+4 Tundra
+5 Island
+3 Plains
+2 Swamp
 
 [Sideboard]
