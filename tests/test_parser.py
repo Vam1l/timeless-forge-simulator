@@ -40,6 +40,19 @@ class TestParser(unittest.TestCase):
         self.assertEqual(draws, 1)
         self.assertEqual(unparsed, 0)
     
+    def test_parse_forge_output(self):
+        """Test parsing Forge style 'Game Result: Game N ended in X ms. Ai(1)-Name has won!' output."""
+        output = "\n".join([
+            "Game Result: Game 1 ended in 123 ms. Ai(1)-White Weenie has won!",
+            "Game Result: Game 2 ended in 456 ms. Ai(2)-Mono Blue Tempo has won!",
+            "Game Result: Game 3 ended in 789 ms. Ai(1)-White Weenie has won!",
+        ])
+        wins_a, wins_b, draws, unparsed = parse_output(output, "01-white-weenie.dck", "02-mono-blue-tempo.dck", 3)
+        self.assertEqual(wins_a, 2)
+        self.assertEqual(wins_b, 1)
+        self.assertEqual(draws, 0)
+        self.assertEqual(unparsed, 0)
+
     def test_parse_with_unparsed(self):
         """Test tracking of unparsed games."""
         output = "\n".join([

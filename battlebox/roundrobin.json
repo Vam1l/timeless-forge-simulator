@@ -50,6 +50,7 @@
     {"deck_a": "02-madness-burn.dck", "deck_b": "09-hunting-storm.dck"},
     {"deck_a": "02-madness-burn.dck", "deck_b": "10-tron.dck"},
     {"deck_a": "03-green-stompy.dck", "deck_b": "09-hunting-storm.dck"},
-    {"deck_a": "03-green-stompy.dck", "deck_b": "10-tron.dck"}
+    {"deck_a": "03-green-stompy.dck", "deck_b": "10-tron.dck"},
+    {"deck_a": "04-black-sacrifice.dck", "deck_b": "10-tron.dck"}
   ]
 }

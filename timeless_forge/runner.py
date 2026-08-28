@@ -84,17 +84,49 @@ class MockEngine:
         )
 
 
+def normalize_deck_name(name: str) -> str:
+    stem = Path(name).stem.lower()
+    stem = re.sub(r"^ai\(\d+\)-", "", stem, flags=re.IGNORECASE)
+    stem = re.sub(r"^(?:game outcome|winner):\s*", "", stem, flags=re.IGNORECASE)
+    stem = re.sub(r"^\d+[-_ ]*", "", stem)
+    return re.sub(r"[^a-z0-9]", "", stem)
+
+
 def parse_output(text: str, deck_a: str, deck_b: str, requested: int) -> tuple[int, int, int, int]:
-    winners: list[str] = []
-    for pattern in WIN_PATTERNS:
-        winners = [m.strip().lower() for m in pattern.findall(text)]
-        if winners:
-            break
-    a, b = Path(deck_a).stem.lower(), Path(deck_b).stem.lower()
-    wins_a = sum(1 for winner in winners if a in winner)
-    wins_b = sum(1 for winner in winners if b in winner)
-    draws = len(DRAW_PATTERN.findall(text))
-    unparsed = max(0, requested - wins_a - wins_b - draws)
+    norm_a = normalize_deck_name(deck_a)
+    norm_b = normalize_deck_name(deck_b)
+
+    wins_a = 0
+    wins_b = 0
+
+    # 1. Try 'Game Result: Game N ended in X ms. PlayerName has won!'
+    gr_matches = re.findall(r"Game Result:\s*Game\s+\d+\s+ended in \d+ ms\.\s*(.+?)\s+has won!", text, re.IGNORECASE)
+    if not gr_matches:
+        # 2. Try 'Winner: PlayerName' (MockEngine style)
+        gr_matches = re.findall(r"^Winner:\s*(.+?)$", text, re.IGNORECASE | re.MULTILINE)
+
+    if gr_matches:
+        for winner in gr_matches:
+            nw = normalize_deck_name(winner)
+            if nw == norm_a or (norm_a and norm_a in nw) or (nw and nw in norm_a):
+                wins_a += 1
+            elif nw == norm_b or (norm_b and norm_b in nw) or (nw and nw in norm_b):
+                wins_b += 1
+    else:
+        # 3. Fallback: 'Game Outcome: PlayerName has won'
+        go_matches = re.findall(r"Game Outcome:\s*(.+?)\s+has won\b", text, re.IGNORECASE)
+        for winner in go_matches:
+            nw = normalize_deck_name(winner)
+            if nw == norm_a or (norm_a and norm_a in nw) or (nw and nw in norm_a):
+                wins_a += 1
+            elif nw == norm_b or (norm_b and norm_b in nw) or (nw and nw in norm_b):
+                wins_b += 1
+
+    draw_matches = re.findall(r"\b(?:game is a draw|result:\s*draw|timed out)\b", text, re.IGNORECASE)
+    draws = len(draw_matches)
+
+    parsed = wins_a + wins_b + draws
+    unparsed = max(0, requested - parsed)
     return wins_a, wins_b, draws, unparsed
 
 
