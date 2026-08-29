@@ -58,6 +58,9 @@
  */
 package forge.ai;
 
+import java.util.Collections;
+import java.util.Set;
+
 import com.google.common.collect.Iterables;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
@@ -246,19 +249,7 @@ public class ComputerUtilCard {
             boolean fieldTower = !CardLists.filter((Iterable)aiField, (Predicate)CardPredicates.nameEquals("Urza's Tower")).isEmpty();
             boolean fieldPP = !CardLists.filter((Iterable)aiField, (Predicate)CardPredicates.nameEquals("Urza's Power Plant")).isEmpty();
 
-            boolean hasMine = fieldMine || !CardLists.filter((Iterable)aiHand, (Predicate)CardPredicates.nameEquals("Urza's Mine")).isEmpty();
-            boolean hasTower = fieldTower || !CardLists.filter((Iterable)aiHand, (Predicate)CardPredicates.nameEquals("Urza's Tower")).isEmpty();
-            boolean hasPP = fieldPP || !CardLists.filter((Iterable)aiHand, (Predicate)CardPredicates.nameEquals("Urza's Power Plant")).isEmpty();
-
-            if (!hasMine && IterableUtil.any(list, (Predicate)CardPredicates.nameEquals("Urza's Mine"))) {
-                return (Card)CardLists.filter((Iterable)nbLand, (Predicate)CardPredicates.nameEquals("Urza's Mine")).getFirst();
-            }
-            if (!hasTower && IterableUtil.any(list, (Predicate)CardPredicates.nameEquals("Urza's Tower"))) {
-                return (Card)CardLists.filter((Iterable)nbLand, (Predicate)CardPredicates.nameEquals("Urza's Tower")).getFirst();
-            }
-            if (!hasPP && IterableUtil.any(list, (Predicate)CardPredicates.nameEquals("Urza's Power Plant"))) {
-                return (Card)CardLists.filter((Iterable)nbLand, (Predicate)CardPredicates.nameEquals("Urza's Power Plant")).getFirst();
-            }
+            boolean tronCompleteField = fieldMine && fieldTower && fieldPP;
 
             if (!fieldMine && IterableUtil.any(list, (Predicate)CardPredicates.nameEquals("Urza's Mine"))) {
                 return (Card)CardLists.filter((Iterable)nbLand, (Predicate)CardPredicates.nameEquals("Urza's Mine")).getFirst();
@@ -268,6 +259,17 @@ public class ComputerUtilCard {
             }
             if (!fieldPP && IterableUtil.any(list, (Predicate)CardPredicates.nameEquals("Urza's Power Plant"))) {
                 return (Card)CardLists.filter((Iterable)nbLand, (Predicate)CardPredicates.nameEquals("Urza's Power Plant")).getFirst();
+            }
+
+            if (tronCompleteField) {
+                CardCollection nonUrza = CardLists.filter((Iterable)nbLand, card -> !card.getName().startsWith("Urza's"));
+                if (!nonUrza.isEmpty()) {
+                    return (Card)nonUrza.getFirst();
+                }
+                CardCollection basics = CardLists.filter(list, (Predicate)CardPredicates.BASIC_LANDS);
+                if (!basics.isEmpty()) {
+                    return (Card)basics.getFirst();
+                }
             }
 
             CardCollection nonUrza = CardLists.filter((Iterable)nbLand, card -> !card.getName().startsWith("Urza's"));
@@ -423,6 +425,12 @@ public class ComputerUtilCard {
         Player controller = lands.get(0).getController();
         CardCollectionView allControllerLands = controller != null ? controller.getLandsInPlay() : null;
 
+        boolean fieldMine = allControllerLands != null && !CardLists.filter((Iterable)allControllerLands, (Predicate)CardPredicates.nameEquals("Urza's Mine")).isEmpty();
+        boolean fieldTower = allControllerLands != null && !CardLists.filter((Iterable)allControllerLands, (Predicate)CardPredicates.nameEquals("Urza's Tower")).isEmpty();
+        boolean fieldPP = allControllerLands != null && !CardLists.filter((Iterable)allControllerLands, (Predicate)CardPredicates.nameEquals("Urza's Power Plant")).isEmpty();
+        boolean tronComplete = fieldMine && fieldTower && fieldPP;
+        Set<String> greenSet = Collections.singleton("G");
+
         for (Card tmp : lands) {
             int score = tmp.isTapped() ? 2 : 0;
             score += tmp.isBasicLand() ? 1 : 0;
@@ -437,13 +445,16 @@ public class ComputerUtilCard {
             if (allControllerLands != null) {
                 long sameNameCount = allControllerLands.stream().filter(CardPredicates.sharesNameWith(tmp)).count();
                 if (sameNameCount > 1) {
-                    score += 10;
+                    score += 50;
                 }
-                if (tmp.isBasicLand() && "Forest".equals(tmp.getName())) {
-                    long greenSources = allControllerLands.stream().filter(l -> l.isBasicLand() && "Forest".equals(l.getName())).count();
+                if (tmp.canProduceColorMana(greenSet) || (tmp.isBasicLand() && "Forest".equals(tmp.getName()))) {
+                    long greenSources = allControllerLands.stream().filter(l -> l.canProduceColorMana(greenSet) || (l.isBasicLand() && "Forest".equals(l.getName()))).count();
                     if (greenSources <= 1) {
-                        score -= 50;
+                        score -= 1000;
                     }
+                }
+                if (tronComplete && tmp.getName().startsWith("Urza's") && sameNameCount == 1) {
+                    score -= 1000;
                 }
             }
             if (score == maxScore && worstLand != null && CardLists.count(lands, (Predicate)CardPredicates.sharesNameWith((Card)tmp)) > CardLists.count(lands, (Predicate)CardPredicates.sharesNameWith((Card)worstLand))) {

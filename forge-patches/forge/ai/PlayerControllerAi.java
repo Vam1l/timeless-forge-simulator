@@ -581,6 +581,24 @@ extends PlayerController {
     @Override
     public CardCollection chooseCardsToDiscardFrom(Player p, SpellAbility sa, CardCollection validCards, int min2, int max, CardCollectionView visibleToChooser) {
         if (p == this.player) {
+            CardCollection filtered = new CardCollection(validCards);
+            if (filtered.size() > min2) {
+                CardCollectionView hand = p.getCardsIn(ZoneType.Hand);
+                long hpCount = hand.stream().filter(c -> "Hunting Pack".equals(c.getName())).count();
+                if (hpCount <= 1) {
+                    filtered.removeIf(c -> "Hunting Pack".equals(c.getName()));
+                }
+                boolean facesCreatures = p.getOpponents().stream().anyMatch(opp -> opp.getCreaturesInPlay().size() > 0);
+                if (facesCreatures) {
+                    long psCount = hand.stream().filter(c -> "Prismatic Strands".equals(c.getName())).count();
+                    if (psCount <= 1) {
+                        filtered.removeIf(c -> "Prismatic Strands".equals(c.getName()));
+                    }
+                }
+            }
+            if (filtered.size() >= min2) {
+                return this.brains.getCardsToDiscard(min2, max, filtered, sa);
+            }
             return this.brains.getCardsToDiscard(min2, max, validCards, sa);
         }
         boolean isTargetFriendly = !p.isOpponentOf(this.player);
@@ -922,6 +940,26 @@ extends PlayerController {
 
     @Override
     public byte chooseColor(String message, SpellAbility sa, ColorSet colors) {
+        if (sa != null && sa.getHostCard() != null && "Prismatic Strands".equals(sa.getHostCard().getName())) {
+            Player p = this.player;
+            int maxPower = -1;
+            byte bestColorMask = 0;
+            for (Player opp : p.getOpponents()) {
+                for (Card attacker : opp.getCreaturesInPlay()) {
+                    if (attacker.isAttacking() || p.getLife() <= 6) {
+                        int pwr = attacker.getNetPower();
+                        byte col = attacker.getColor().getColor();
+                        if (pwr > maxPower && (colors.getColor() & col) != 0) {
+                            maxPower = pwr;
+                            bestColorMask = col;
+                        }
+                    }
+                }
+            }
+            if (bestColorMask != 0) {
+                return bestColorMask;
+            }
+        }
         if (colors.countColors() < 2) {
             return Iterables.getFirst(colors, MagicColor.Color.WHITE).getColorMask();
         }

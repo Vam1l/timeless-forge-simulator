@@ -25,6 +25,8 @@ class TestAiHeuristics(unittest.TestCase):
             "forge/ai/ability/ChangeZoneAi.class",
             "forge/ai/ability/DestroyAllAi.class",
             "forge/ai/ability/TwoPilesAi.class",
+            "forge/ai/ability/ChooseColorAi.class",
+            "forge/ai/ability/PermanentAi.class",
             "forge/ai/ComputerUtilCard.class",
             "forge/ai/ComputerUtilMana.class",
             "forge/ai/PlayerControllerAi.class",
