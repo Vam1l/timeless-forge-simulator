@@ -49,6 +49,11 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
       - name: Set up Java
         uses: actions/setup-java@v4
         with:
@@ -66,6 +71,10 @@ jobs:
         run: |
           chmod +x scripts/apply_forge_patches.sh
           ./scripts/apply_forge_patches.sh forge-${{ env.FORGE_VERSION }}.jar
+
+      - name: Verify patched Forge JAR contains AI classes
+        run: |
+          python -m unittest tests.test_ai_heuristics.TestAiHeuristics.test_jar_contains_patched_classes -v
 
       - name: Preflight check patched Forge
         run: |
