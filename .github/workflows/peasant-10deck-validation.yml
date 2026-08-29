@@ -29,6 +29,7 @@ jobs:
         with:
           name: batch-1-results
           run-id: 33239919686
+          github-token: ${{ secrets.GITHUB_TOKEN }}
           path: all-batch-results/batch-1-results
 
       - name: Download Batch 2 results from run 33239919686
@@ -36,6 +37,7 @@ jobs:
         with:
           name: batch-2-results
           run-id: 33239919686
+          github-token: ${{ secrets.GITHUB_TOKEN }}
           path: all-batch-results/batch-2-results
 
       - name: Aggregate results
