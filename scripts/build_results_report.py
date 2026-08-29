@@ -12,10 +12,21 @@ import sys
 def load_batch_results(results_dir):
     """Load all batch results from intermediate artifacts."""
     results = []
-    for csv_file in sorted(results_dir.glob("*.csv")):
+    combined_csv = results_dir / "combined-results.csv"
+    summary_csv = results_dir / "summary.csv"
+
+    if combined_csv.is_file():
+        csv_files = [combined_csv]
+    elif summary_csv.is_file():
+        csv_files = [summary_csv]
+    else:
+        csv_files = sorted(results_dir.glob("*.csv"))
+
+    for csv_file in csv_files:
         with open(csv_file) as f:
             reader = csv.DictReader(f)
-            results.extend(list(reader))
+            if reader.fieldnames and 'deck_a' in reader.fieldnames:
+                results.extend(list(reader))
     return results
 
 def build_deck_stats(batch_results):

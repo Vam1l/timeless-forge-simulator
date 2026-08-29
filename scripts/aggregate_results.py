@@ -88,12 +88,23 @@ def main():
             writer.writeheader()
             writer.writerows(all_batch_results)
         print(f"\nWrote {len(all_batch_results)} results to {csv_path}")
-        
+
+        summary_csv_path = output_dir / "summary.csv"
+        with open(summary_csv_path, 'w', newline='') as f:
+            writer = csv.DictWriter(f, fieldnames=fieldnames)
+            writer.writeheader()
+            writer.writerows(all_batch_results)
+
         # Write aggregated JSON
         json_path = output_dir / "combined-results.json"
         with open(json_path, 'w') as f:
             json.dump(all_batch_results, f, indent=2)
         print(f"Wrote results to {json_path}")
+
+        summary_json_path = output_dir / "summary.json"
+        with open(summary_json_path, 'w') as f:
+            json.dump(all_batch_results, f, indent=2)
+        print(f"Wrote summary to {summary_json_path}")
     else:
         print("WARNING: No batch results found")
         return 1

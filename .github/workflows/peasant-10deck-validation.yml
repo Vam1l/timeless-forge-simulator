@@ -9,196 +9,12 @@ on:
 permissions: read-all
 
 env:
-  FORGE_VERSION: "2.0.14"
-  JAVA_VERSION: "17"
   PYTHONUNBUFFERED: "1"
 
 jobs:
-  validate:
-    name: Validate Decks & Setup
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
-
-      - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-
-      - name: Run unit tests
-        run: |
-          python -m unittest discover tests -v
-
-      - name: Validate deck structure (exactly 60 cards)
-        run: |
-          python scripts/validate_battlebox.py
-
-      - name: Verify validation configuration (14 matchups / 1,400 games)
-        run: |
-          python -c "import json; data = json.load(open('battlebox/validation.json')); print(f'Total validation matchups: {len(data[\"matchups\"])}'); assert len(data[\"matchups\"]) == 14"
-
-  forge-setup:
-    name: Download & Patch Forge 2.0.14
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
-
-      - name: Set up Java
-        uses: actions/setup-java@v4
-        with:
-          distribution: 'temurin'
-          java-version: ${{ env.JAVA_VERSION }}
-
-      - name: Download Forge distribution
-        run: |
-          curl -sSL -o forge-installer-${{ env.FORGE_VERSION }}.tar.bz2 "https://github.com/Card-Forge/forge/releases/download/forge-${{ env.FORGE_VERSION }}/forge-installer-${{ env.FORGE_VERSION }}.tar.bz2"
-          tar -xjf forge-installer-${{ env.FORGE_VERSION }}.tar.bz2
-          cp forge-gui-desktop-${{ env.FORGE_VERSION }}-jar-with-dependencies.jar forge-${{ env.FORGE_VERSION }}.jar
-          test -f forge-${{ env.FORGE_VERSION }}.jar
-
-      - name: Apply AI Patches
-        run: |
-          chmod +x scripts/apply_forge_patches.sh
-          ./scripts/apply_forge_patches.sh forge-${{ env.FORGE_VERSION }}.jar
-
-      - name: Verify patched Forge JAR contains AI classes
-        run: |
-          python -m unittest tests.test_ai_heuristics.TestAiHeuristics.test_jar_contains_patched_classes -v
-
-      - name: Preflight check patched Forge
-        run: |
-          test -f forge-${{ env.FORGE_VERSION }}.jar
-          java -jar forge-${{ env.FORGE_VERSION }}.jar sim --help || true
-
-      - name: Upload Forge distribution artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: forge-dist-${{ env.FORGE_VERSION }}
-          path: |
-            forge-${{ env.FORGE_VERSION }}.jar
-            res/
-
-  simulate-batch-1:
-    name: "Simulate Batch 1 (Matchups 1–7, 700 games)"
-    runs-on: ubuntu-latest
-    needs: [validate, forge-setup]
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
-
-      - name: Set up Java
-        uses: actions/setup-java@v4
-        with:
-          distribution: 'temurin'
-          java-version: ${{ env.JAVA_VERSION }}
-
-      - name: Install system dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y xvfb
-
-      - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-
-      - name: Download Forge distribution
-        uses: actions/download-artifact@v4
-        with:
-          name: forge-dist-${{ env.FORGE_VERSION }}
-          path: ./
-
-      - name: Preflight check Forge JAR
-        run: |
-          test -f forge-${{ env.FORGE_VERSION }}.jar
-          xvfb-run java -jar forge-${{ env.FORGE_VERSION }}.jar sim --help || true
-
-      - name: Run matchups 1–7
-        run: |
-          xvfb-run python scripts/run_matchup_batch.py \
-            --config battlebox/validation.json \
-            --matchup-indices 0 1 2 3 4 5 6 \
-            --forge-jar ./forge-${{ env.FORGE_VERSION }}.jar \
-            --output batch-1-results
-
-      - name: Upload batch results
-        uses: actions/upload-artifact@v4
-        with:
-          name: batch-1-results
-          path: batch-1-results/
-
-  simulate-batch-2:
-    name: "Simulate Batch 2 (Matchups 8–14, 700 games)"
-    runs-on: ubuntu-latest
-    needs: [validate, forge-setup]
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
-
-      - name: Set up Java
-        uses: actions/setup-java@v4
-        with:
-          distribution: 'temurin'
-          java-version: ${{ env.JAVA_VERSION }}
-
-      - name: Install system dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y xvfb
-
-      - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-
-      - name: Download Forge distribution
-        uses: actions/download-artifact@v4
-        with:
-          name: forge-dist-${{ env.FORGE_VERSION }}
-          path: ./
-
-      - name: Preflight check Forge JAR
-        run: |
-          test -f forge-${{ env.FORGE_VERSION }}.jar
-          xvfb-run java -jar forge-${{ env.FORGE_VERSION }}.jar sim --help || true
-
-      - name: Run matchups 8–14
-        run: |
-          xvfb-run python scripts/run_matchup_batch.py \
-            --config battlebox/validation.json \
-            --matchup-indices 7 8 9 10 11 12 13 \
-            --forge-jar ./forge-${{ env.FORGE_VERSION }}.jar \
-            --output batch-2-results
-
-      - name: Upload batch results
-        uses: actions/upload-artifact@v4
-        with:
-          name: batch-2-results
-          path: batch-2-results/
-
   aggregate:
     name: Aggregate & Report Validation Results
     runs-on: ubuntu-latest
-    needs: [simulate-batch-1, simulate-batch-2]
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -208,26 +24,31 @@ jobs:
         with:
           python-version: '3.11'
 
-      - name: Download all batch results
+      - name: Download Batch 1 results from run 33239919686
         uses: actions/download-artifact@v4
         with:
-          path: ./
+          name: batch-1-results
+          run-id: 33239919686
+          path: all-batch-results/batch-1-results
+
+      - name: Download Batch 2 results from run 33239919686
+        uses: actions/download-artifact@v4
+        with:
+          name: batch-2-results
+          run-id: 33239919686
+          path: all-batch-results/batch-2-results
 
       - name: Aggregate results
         run: |
-          python scripts/aggregate_results.py \
-            --inputs batch-1-results batch-2-results \
-            --output validation-results
+          python scripts/aggregate_results.py all-batch-results validation-results
 
       - name: Build results report
         run: |
-          python scripts/build_results_report.py \
-            validation-results/summary.json \
-            validation-results/
+          python scripts/build_results_report.py validation-results
 
       - name: Check for anomalies
         run: |
-          python scripts/check_anomalies.py validation-results/summary.json || true
+          python scripts/check_anomalies.py validation-results || true
 
       - name: Upload aggregated validation results
         uses: actions/upload-artifact@v4
