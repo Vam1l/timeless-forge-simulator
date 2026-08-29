@@ -11,6 +11,8 @@ data/
 
 # Results
 batch-*-results/
+diagnostic-results/
+diagnostic-config-*.json
 final-results/
 results/
 *.log
