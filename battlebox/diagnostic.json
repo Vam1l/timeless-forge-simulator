@@ -1,6 +1,6 @@
 {
   "name": "Peasant+ 10-Deck Forge AI Diagnostic Run v1.0",
-  "description": "Diagnostic run testing 16 seating orientations x 20 games = 320 total games without quiet mode.",
+  "description": "Diagnostic run testing 14 seating orientations x 20 games = 280 total games without quiet mode.",
   "games_preboard": 20,
   "games_postboard": 0,
   "clock_seconds": 120,
@@ -48,26 +48,6 @@
       "deck_b": "10-tron.dck"
     },
     {
-      "name": "05-blue-terror-vs-01-white-weenie",
-      "deck_a": "05-blue-terror.dck",
-      "deck_b": "01-white-weenie.dck"
-    },
-    {
-      "name": "01-white-weenie-vs-05-blue-terror",
-      "deck_a": "01-white-weenie.dck",
-      "deck_b": "05-blue-terror.dck"
-    },
-    {
-      "name": "05-blue-terror-vs-03-green-stompy",
-      "deck_a": "05-blue-terror.dck",
-      "deck_b": "03-green-stompy.dck"
-    },
-    {
-      "name": "03-green-stompy-vs-05-blue-terror",
-      "deck_a": "03-green-stompy.dck",
-      "deck_b": "05-blue-terror.dck"
-    },
-    {
       "name": "07-esper-control-vs-04-black-sacrifice",
       "deck_a": "07-esper-control.dck",
       "deck_b": "04-black-sacrifice.dck"
@@ -86,6 +66,16 @@
       "name": "06-jund-wildfire-vs-07-esper-control",
       "deck_a": "06-jund-wildfire.dck",
       "deck_b": "07-esper-control.dck"
+    },
+    {
+      "name": "05-blue-terror-vs-01-white-weenie",
+      "deck_a": "05-blue-terror.dck",
+      "deck_b": "01-white-weenie.dck"
+    },
+    {
+      "name": "01-white-weenie-vs-05-blue-terror",
+      "deck_a": "01-white-weenie.dck",
+      "deck_b": "05-blue-terror.dck"
     }
   ]
 }
