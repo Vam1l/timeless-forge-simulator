@@ -47,10 +47,10 @@ class Engine(Protocol):
 
 
 class ForgeEngine:
-    def __init__(self, jar: Path, java: str = "java"):
+    def __init__(self, jar: Path, java: str = "java", quiet: bool = True):
         if not jar.is_file():
             raise FileNotFoundError(f"Forge jar not found: {jar}")
-        self.jar, self.java = jar.resolve(), java
+        self.jar, self.java, self.quiet = jar.resolve(), java, quiet
 
     def run(self, deck_a: Path, deck_b: Path, games: int, clock: int) -> str:
         for d in (deck_a, deck_b):
@@ -64,7 +64,9 @@ class ForgeEngine:
         if shutil.which("xvfb-run") and "DISPLAY" not in os.environ and self.java == "java":
             java_cmd = ["xvfb-run", "-a", self.java]
         command = java_cmd + ["-jar", str(self.jar), "sim", "-d", deck_a.name, deck_b.name,
-                             "-D", str(deck_a.parent.resolve()), "-n", str(games), "-q", "-c", str(clock)]
+                             "-D", str(deck_a.parent.resolve()), "-n", str(games), "-c", str(clock)]
+        if self.quiet:
+            command.append("-q")
         completed = subprocess.run(command, text=True, stdout=subprocess.PIPE,
                                    stderr=subprocess.STDOUT, check=False)
         if completed.returncode:
@@ -168,8 +170,9 @@ def run_experiment(config_path: Path, engine: Engine) -> Path:
             pre = int(matchup.get("games_preboard", config.get("games_preboard", 0)))
             post = int(matchup.get("games_postboard", config.get("games_postboard", 0)))
             if pre:
+                log_name = f"{index:02d}-{label}.log" if label else f"{index:02d}-preboard.log"
                 results.append(_batch(engine, label, "preboard", deck_a_path, deck_b_path,
-                                      pre, clock, output / f"{index:02d}-preboard.log"))
+                                      pre, clock, output / log_name))
             if post:
                 a_boarded = write_deck(apply_sideboard(deck_a, matchup.get("sideboard_a", {})), boarded_dir / f"{index:02d}-a.dck")
                 b_boarded = write_deck(apply_sideboard(deck_b, matchup.get("sideboard_b", {})), boarded_dir / f"{index:02d}-b.dck")

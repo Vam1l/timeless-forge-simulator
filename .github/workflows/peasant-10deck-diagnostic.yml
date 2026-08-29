@@ -1,0 +1,115 @@
+name: Peasant+ 10-Deck Forge AI Diagnostic
+
+on:
+  workflow_dispatch:
+
+permissions: read-all
+
+env:
+  FORGE_VERSION: "2.0.14"
+  JAVA_VERSION: "17"
+  PYTHONUNBUFFERED: "1"
+
+jobs:
+  validate:
+    name: Validate Decks & Setup
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install pytest
+
+      - name: Run unit tests
+        run: |
+          python -m pytest tests/ -v
+
+      - name: Validate deck structure (exactly 60 cards)
+        run: |
+          python scripts/validate_battlebox.py
+
+      - name: Verify diagnostic configuration (16 matchups)
+        run: |
+          python -c "import json; data = json.load(open('battlebox/diagnostic.json')); print(f'Total diagnostic matchups: {len(data[\"matchups\"])}'); assert len(data[\"matchups\"]) == 16"
+
+  forge-setup:
+    name: Download Forge 2.0.14
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download Forge distribution
+        run: |
+          curl -sSL -o forge-installer-${{ env.FORGE_VERSION }}.tar.bz2 "https://github.com/Card-Forge/forge/releases/download/forge-${{ env.FORGE_VERSION }}/forge-installer-${{ env.FORGE_VERSION }}.tar.bz2"
+          tar -xjf forge-installer-${{ env.FORGE_VERSION }}.tar.bz2
+          cp forge-gui-desktop-${{ env.FORGE_VERSION }}-jar-with-dependencies.jar forge-${{ env.FORGE_VERSION }}.jar
+          test -f forge-${{ env.FORGE_VERSION }}.jar
+
+      - name: Upload Forge distribution artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: forge-dist-${{ env.FORGE_VERSION }}
+          path: |
+            forge-${{ env.FORGE_VERSION }}.jar
+            res/
+
+  run-diagnostics:
+    name: "Run High-Verbosity AI Diagnostic Simulations (16 Orientations × 20 Games)"
+    runs-on: ubuntu-latest
+    needs: [validate, forge-setup]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: ${{ env.JAVA_VERSION }}
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y xvfb
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+
+      - name: Download Forge distribution
+        uses: actions/download-artifact@v4
+        with:
+          name: forge-dist-${{ env.FORGE_VERSION }}
+          path: ./
+
+      - name: Preflight check Forge JAR
+        run: |
+          test -f forge-${{ env.FORGE_VERSION }}.jar
+          xvfb-run java -jar forge-${{ env.FORGE_VERSION }}.jar sim --help
+
+      - name: Run diagnostic matchups (quiet=False)
+        run: |
+          xvfb-run python scripts/run_diagnostic_batch.py \
+            --forge-jar ./forge-${{ env.FORGE_VERSION }}.jar \
+            --output diagnostic-results
+
+      - name: Build diagnostic index
+        run: |
+          python scripts/build_diagnostic_index.py diagnostic-results diagnostic-results/diagnostic-index.txt
+
+      - name: Upload diagnostic logs artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: forge-ai-diagnostic-logs
+          path: diagnostic-results/
