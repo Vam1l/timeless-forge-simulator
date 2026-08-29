@@ -17,7 +17,10 @@ javac -cp "$FORGE_JAR" \
   forge-patches/forge/ai/ability/ManaAi.java \
   forge-patches/forge/ai/ability/ChangeZoneAi.java \
   forge-patches/forge/ai/ability/DestroyAllAi.java \
+  forge-patches/forge/ai/ability/TwoPilesAi.java \
   forge-patches/forge/ai/ComputerUtilCard.java \
+  forge-patches/forge/ai/ComputerUtilMana.java \
+  forge-patches/forge/ai/PlayerControllerAi.java \
   forge-patches/forge/game/ability/effects/TwoPilesEffect.java \
   -d "$BUILD_DIR"
 

@@ -134,10 +134,12 @@ extends SpellAbilityAi {
                     }
                     boolean lifeInDanger = ai.getLife() <= oppPower || (ai.getGame().getCombat() != null && ComputerUtilCombat.lifeInDanger(ai, ai.getGame().getCombat()));
                     if (!lifeInDanger) {
-                        if (opplist.size() < 2 && oppPower < 5) {
-                            return new AiAbilityDecision(0, AiPlayDecision.CantPlayAi);
+                        if (opplist.size() < 3 || oppPower < 7) {
+                            if (!ailist.isEmpty() || opplist.size() < 2 || oppPower < 5) {
+                                return new AiAbilityDecision(0, AiPlayDecision.CantPlayAi);
+                            }
                         }
-                        if (opplist.size() < ailist.size() + 1) {
+                        if (opplist.size() < ailist.size() + 2) {
                             return new AiAbilityDecision(0, AiPlayDecision.CantPlayAi);
                         }
                     }

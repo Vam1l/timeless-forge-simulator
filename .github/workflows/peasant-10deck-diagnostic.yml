@@ -82,7 +82,7 @@ jobs:
             res/
 
   run-diagnostics:
-    name: "Run High-Verbosity AI Diagnostic Simulations (14 Orientations × 20 Games)"
+    name: "Run High-Verbosity AI Diagnostic Simulations (14 Orientations × 5 Games = 70 Total Games)"
     runs-on: ubuntu-latest
     needs: [validate, forge-setup]
     steps:

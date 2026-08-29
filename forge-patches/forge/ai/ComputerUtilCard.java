@@ -241,9 +241,14 @@ public class ComputerUtilCard {
             Card player = (Card)nbLand.get(0);
             CardCollectionView aiField = player.getController().getCardsIn(ZoneType.Battlefield);
             CardCollectionView aiHand = player.getController().getCardsIn(ZoneType.Hand);
-            boolean hasMine = !CardLists.filter((Iterable)aiField, (Predicate)CardPredicates.nameEquals("Urza's Mine")).isEmpty() || !CardLists.filter((Iterable)aiHand, (Predicate)CardPredicates.nameEquals("Urza's Mine")).isEmpty();
-            boolean hasTower = !CardLists.filter((Iterable)aiField, (Predicate)CardPredicates.nameEquals("Urza's Tower")).isEmpty() || !CardLists.filter((Iterable)aiHand, (Predicate)CardPredicates.nameEquals("Urza's Tower")).isEmpty();
-            boolean hasPP = !CardLists.filter((Iterable)aiField, (Predicate)CardPredicates.nameEquals("Urza's Power Plant")).isEmpty() || !CardLists.filter((Iterable)aiHand, (Predicate)CardPredicates.nameEquals("Urza's Power Plant")).isEmpty();
+
+            boolean fieldMine = !CardLists.filter((Iterable)aiField, (Predicate)CardPredicates.nameEquals("Urza's Mine")).isEmpty();
+            boolean fieldTower = !CardLists.filter((Iterable)aiField, (Predicate)CardPredicates.nameEquals("Urza's Tower")).isEmpty();
+            boolean fieldPP = !CardLists.filter((Iterable)aiField, (Predicate)CardPredicates.nameEquals("Urza's Power Plant")).isEmpty();
+
+            boolean hasMine = fieldMine || !CardLists.filter((Iterable)aiHand, (Predicate)CardPredicates.nameEquals("Urza's Mine")).isEmpty();
+            boolean hasTower = fieldTower || !CardLists.filter((Iterable)aiHand, (Predicate)CardPredicates.nameEquals("Urza's Tower")).isEmpty();
+            boolean hasPP = fieldPP || !CardLists.filter((Iterable)aiHand, (Predicate)CardPredicates.nameEquals("Urza's Power Plant")).isEmpty();
 
             if (!hasMine && IterableUtil.any(list, (Predicate)CardPredicates.nameEquals("Urza's Mine"))) {
                 return (Card)CardLists.filter((Iterable)nbLand, (Predicate)CardPredicates.nameEquals("Urza's Mine")).getFirst();
@@ -254,9 +259,7 @@ public class ComputerUtilCard {
             if (!hasPP && IterableUtil.any(list, (Predicate)CardPredicates.nameEquals("Urza's Power Plant"))) {
                 return (Card)CardLists.filter((Iterable)nbLand, (Predicate)CardPredicates.nameEquals("Urza's Power Plant")).getFirst();
             }
-            boolean fieldMine = !CardLists.filter((Iterable)aiField, (Predicate)CardPredicates.nameEquals("Urza's Mine")).isEmpty();
-            boolean fieldTower = !CardLists.filter((Iterable)aiField, (Predicate)CardPredicates.nameEquals("Urza's Tower")).isEmpty();
-            boolean fieldPP = !CardLists.filter((Iterable)aiField, (Predicate)CardPredicates.nameEquals("Urza's Power Plant")).isEmpty();
+
             if (!fieldMine && IterableUtil.any(list, (Predicate)CardPredicates.nameEquals("Urza's Mine"))) {
                 return (Card)CardLists.filter((Iterable)nbLand, (Predicate)CardPredicates.nameEquals("Urza's Mine")).getFirst();
             }
@@ -265,6 +268,15 @@ public class ComputerUtilCard {
             }
             if (!fieldPP && IterableUtil.any(list, (Predicate)CardPredicates.nameEquals("Urza's Power Plant"))) {
                 return (Card)CardLists.filter((Iterable)nbLand, (Predicate)CardPredicates.nameEquals("Urza's Power Plant")).getFirst();
+            }
+
+            CardCollection nonUrza = CardLists.filter((Iterable)nbLand, card -> !card.getName().startsWith("Urza's"));
+            if (!nonUrza.isEmpty()) {
+                return (Card)nonUrza.getFirst();
+            }
+            CardCollection basics = CardLists.filter(list, (Predicate)CardPredicates.BASIC_LANDS);
+            if (!basics.isEmpty()) {
+                return (Card)basics.getFirst();
             }
             return (Card)nbLand.getFirst();
         }
@@ -407,6 +419,10 @@ public class ComputerUtilCard {
     public static Card getWorstLand(List<Card> lands) {
         Card worstLand = null;
         int maxScore = Integer.MIN_VALUE;
+        if (lands == null || lands.isEmpty()) return null;
+        Player controller = lands.get(0).getController();
+        CardCollectionView allControllerLands = controller != null ? controller.getLandsInPlay() : null;
+
         for (Card tmp : lands) {
             int score = tmp.isTapped() ? 2 : 0;
             score += tmp.isBasicLand() ? 1 : 0;
@@ -418,10 +434,22 @@ public class ComputerUtilCard {
                 }
                 score -= 5;
             }
-            if (score == maxScore && CardLists.count(lands, (Predicate)CardPredicates.sharesNameWith((Card)tmp)) > CardLists.count(lands, (Predicate)CardPredicates.sharesNameWith((Card)worstLand))) {
+            if (allControllerLands != null) {
+                long sameNameCount = allControllerLands.stream().filter(CardPredicates.sharesNameWith(tmp)).count();
+                if (sameNameCount > 1) {
+                    score += 10;
+                }
+                if (tmp.isBasicLand() && "Forest".equals(tmp.getName())) {
+                    long greenSources = allControllerLands.stream().filter(l -> l.isBasicLand() && "Forest".equals(l.getName())).count();
+                    if (greenSources <= 1) {
+                        score -= 50;
+                    }
+                }
+            }
+            if (score == maxScore && worstLand != null && CardLists.count(lands, (Predicate)CardPredicates.sharesNameWith((Card)tmp)) > CardLists.count(lands, (Predicate)CardPredicates.sharesNameWith((Card)worstLand))) {
                 worstLand = tmp;
             }
-            if (score <= maxScore) continue;
+            if (score <= maxScore && worstLand != null) continue;
             worstLand = tmp;
             maxScore = score;
         }
@@ -573,10 +601,11 @@ public class ComputerUtilCard {
             }
             cc.sort(CardLists.CmcComparatorInv);
             Card cheapest = (Card)cc.getLast();
-            if (cheapest.hasSVar("DoNotDiscardIfAble")) {
+            if (cheapest.hasSVar("DoNotDiscardIfAble") || "Hunting Pack".equals(cheapest.getName()) || "Prismatic Strands".equals(cheapest.getName())) {
                 for (int i = cc.size() - 1; i >= 0; --i) {
-                    if (((Card)cc.get(i)).hasSVar("DoNotDiscardIfAble")) continue;
-                    cheapest = (Card)cc.get(i);
+                    Card candidate = (Card)cc.get(i);
+                    if (candidate.hasSVar("DoNotDiscardIfAble") || "Hunting Pack".equals(candidate.getName()) || "Prismatic Strands".equals(candidate.getName())) continue;
+                    cheapest = candidate;
                     break;
                 }
             }

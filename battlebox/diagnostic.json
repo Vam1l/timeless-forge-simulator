@@ -1,7 +1,7 @@
 {
   "name": "Peasant+ 10-Deck Forge AI Diagnostic Run v1.0",
-  "description": "Diagnostic run testing 14 seating orientations x 20 games = 280 total games without quiet mode.",
-  "games_preboard": 20,
+  "description": "Diagnostic smoke test testing 14 seating orientations x 5 games = 70 total games without quiet mode.",
+  "games_preboard": 5,
   "games_postboard": 0,
   "clock_seconds": 120,
   "deck_dir": "battlebox/decks",
