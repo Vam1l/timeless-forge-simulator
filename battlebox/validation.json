@@ -1,0 +1,81 @@
+{
+  "name": "Peasant+ 10-Deck Forge AI Targeted Validation Run v1.0",
+  "description": "Validation run testing 14 targeted seating orientations x 100 games = 1,400 total games.",
+  "games_preboard": 100,
+  "games_postboard": 0,
+  "clock_seconds": 120,
+  "deck_dir": "battlebox/decks",
+  "output_dir": "validation-results",
+  "matchups": [
+    {
+      "name": "09-hunting-storm-vs-01-white-weenie",
+      "deck_a": "09-hunting-storm.dck",
+      "deck_b": "01-white-weenie.dck"
+    },
+    {
+      "name": "01-white-weenie-vs-09-hunting-storm",
+      "deck_a": "01-white-weenie.dck",
+      "deck_b": "09-hunting-storm.dck"
+    },
+    {
+      "name": "09-hunting-storm-vs-05-blue-terror",
+      "deck_a": "09-hunting-storm.dck",
+      "deck_b": "05-blue-terror.dck"
+    },
+    {
+      "name": "05-blue-terror-vs-09-hunting-storm",
+      "deck_a": "05-blue-terror.dck",
+      "deck_b": "09-hunting-storm.dck"
+    },
+    {
+      "name": "10-tron-vs-01-white-weenie",
+      "deck_a": "10-tron.dck",
+      "deck_b": "01-white-weenie.dck"
+    },
+    {
+      "name": "01-white-weenie-vs-10-tron",
+      "deck_a": "01-white-weenie.dck",
+      "deck_b": "10-tron.dck"
+    },
+    {
+      "name": "10-tron-vs-06-jund-wildfire",
+      "deck_a": "10-tron.dck",
+      "deck_b": "06-jund-wildfire.dck"
+    },
+    {
+      "name": "06-jund-wildfire-vs-10-tron",
+      "deck_a": "06-jund-wildfire.dck",
+      "deck_b": "10-tron.dck"
+    },
+    {
+      "name": "07-esper-control-vs-04-black-sacrifice",
+      "deck_a": "07-esper-control.dck",
+      "deck_b": "04-black-sacrifice.dck"
+    },
+    {
+      "name": "04-black-sacrifice-vs-07-esper-control",
+      "deck_a": "04-black-sacrifice.dck",
+      "deck_b": "07-esper-control.dck"
+    },
+    {
+      "name": "07-esper-control-vs-06-jund-wildfire",
+      "deck_a": "07-esper-control.dck",
+      "deck_b": "06-jund-wildfire.dck"
+    },
+    {
+      "name": "06-jund-wildfire-vs-07-esper-control",
+      "deck_a": "06-jund-wildfire.dck",
+      "deck_b": "07-esper-control.dck"
+    },
+    {
+      "name": "05-blue-terror-vs-01-white-weenie",
+      "deck_a": "05-blue-terror.dck",
+      "deck_b": "01-white-weenie.dck"
+    },
+    {
+      "name": "01-white-weenie-vs-05-blue-terror",
+      "deck_a": "01-white-weenie.dck",
+      "deck_b": "05-blue-terror.dck"
+    }
+  ]
+}

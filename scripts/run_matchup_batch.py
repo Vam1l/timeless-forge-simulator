@@ -19,10 +19,11 @@ def main():
     parser.add_argument('--matchup-indices', type=int, nargs='+', required=True, help='Indices of matchups to run')
     parser.add_argument('--forge-jar', type=Path, required=True, help='Path to forge.jar')
     parser.add_argument('--output', type=Path, required=True, help='Output directory')
+    parser.add_argument('--config', type=Path, default=repo_root / "battlebox" / "roundrobin.json", help='Path to config file')
     args = parser.parse_args()
     
     # Load full configuration
-    config_path = repo_root / "battlebox" / "roundrobin.json"
+    config_path = args.config
     with open(config_path) as f:
         full_config = json.load(f)
     
