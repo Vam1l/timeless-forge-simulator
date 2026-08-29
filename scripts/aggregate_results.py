@@ -40,7 +40,7 @@ def main():
             reader = csv.DictReader(f)
             for row in reader:
                 # Check if re-parsing raw log is necessary
-                requested = int(row.get("requested_games", row.get("games", 400)))
+                requested = int(row.get("requested_games", row.get("games", 200)))
                 wins_a = int(row.get("wins_a", 0))
                 wins_b = int(row.get("wins_b", 0))
                 draws = int(row.get("draws", 0))

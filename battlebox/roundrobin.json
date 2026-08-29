@@ -1,56 +1,371 @@
 {
-  "name": "Peasant+ 10-Deck Forge Round-Robin Baseline v1.0",
-  "description": "Full round-robin AI-vs-AI balance test across 10 archetypes. 45 matchups × 400 games each = 18,000 total games. Forge 2.0.14.",
-  "games_preboard": 400,
+  "name": "Peasant+ 10-Deck Forge Round-Robin Stage 2 v1.0",
+  "description": "Full orientation-balanced round-robin AI-vs-AI balance test across 10 archetypes. 45 unordered pairings \u00d7 2 orientations \u00d7 200 games = 18,000 total games. Forge 2.0.14.",
+  "games_preboard": 200,
   "games_postboard": 0,
   "clock_seconds": 120,
   "deck_dir": "battlebox/decks",
-  "output_dir": "../results/peasant-10deck-baseline",
+  "output_dir": "../results/peasant-10deck-stage2",
   "matchups": [
-    {"deck_a": "01-white-weenie.dck", "deck_b": "02-madness-burn.dck"},
-    {"deck_a": "01-white-weenie.dck", "deck_b": "03-green-stompy.dck"},
-    {"deck_a": "01-white-weenie.dck", "deck_b": "04-black-sacrifice.dck"},
-    {"deck_a": "01-white-weenie.dck", "deck_b": "05-blue-terror.dck"},
-    {"deck_a": "01-white-weenie.dck", "deck_b": "06-jund-wildfire.dck"},
-    {"deck_a": "02-madness-burn.dck", "deck_b": "03-green-stompy.dck"},
-    {"deck_a": "02-madness-burn.dck", "deck_b": "04-black-sacrifice.dck"},
-    {"deck_a": "02-madness-burn.dck", "deck_b": "05-blue-terror.dck"},
-    {"deck_a": "02-madness-burn.dck", "deck_b": "06-jund-wildfire.dck"},
-    {"deck_a": "02-madness-burn.dck", "deck_b": "07-esper-control.dck"},
-    {"deck_a": "03-green-stompy.dck", "deck_b": "04-black-sacrifice.dck"},
-    {"deck_a": "03-green-stompy.dck", "deck_b": "05-blue-terror.dck"},
-    {"deck_a": "03-green-stompy.dck", "deck_b": "06-jund-wildfire.dck"},
-    {"deck_a": "03-green-stompy.dck", "deck_b": "07-esper-control.dck"},
-    {"deck_a": "03-green-stompy.dck", "deck_b": "08-sultai-beans.dck"},
-    {"deck_a": "04-black-sacrifice.dck", "deck_b": "05-blue-terror.dck"},
-    {"deck_a": "04-black-sacrifice.dck", "deck_b": "06-jund-wildfire.dck"},
-    {"deck_a": "04-black-sacrifice.dck", "deck_b": "07-esper-control.dck"},
-    {"deck_a": "04-black-sacrifice.dck", "deck_b": "08-sultai-beans.dck"},
-    {"deck_a": "04-black-sacrifice.dck", "deck_b": "09-hunting-storm.dck"},
-    {"deck_a": "05-blue-terror.dck", "deck_b": "06-jund-wildfire.dck"},
-    {"deck_a": "05-blue-terror.dck", "deck_b": "07-esper-control.dck"},
-    {"deck_a": "05-blue-terror.dck", "deck_b": "08-sultai-beans.dck"},
-    {"deck_a": "05-blue-terror.dck", "deck_b": "09-hunting-storm.dck"},
-    {"deck_a": "05-blue-terror.dck", "deck_b": "10-tron.dck"},
-    {"deck_a": "06-jund-wildfire.dck", "deck_b": "07-esper-control.dck"},
-    {"deck_a": "06-jund-wildfire.dck", "deck_b": "08-sultai-beans.dck"},
-    {"deck_a": "06-jund-wildfire.dck", "deck_b": "09-hunting-storm.dck"},
-    {"deck_a": "06-jund-wildfire.dck", "deck_b": "10-tron.dck"},
-    {"deck_a": "07-esper-control.dck", "deck_b": "08-sultai-beans.dck"},
-    {"deck_a": "07-esper-control.dck", "deck_b": "09-hunting-storm.dck"},
-    {"deck_a": "07-esper-control.dck", "deck_b": "10-tron.dck"},
-    {"deck_a": "08-sultai-beans.dck", "deck_b": "09-hunting-storm.dck"},
-    {"deck_a": "08-sultai-beans.dck", "deck_b": "10-tron.dck"},
-    {"deck_a": "09-hunting-storm.dck", "deck_b": "10-tron.dck"},
-    {"deck_a": "01-white-weenie.dck", "deck_b": "07-esper-control.dck"},
-    {"deck_a": "01-white-weenie.dck", "deck_b": "08-sultai-beans.dck"},
-    {"deck_a": "01-white-weenie.dck", "deck_b": "09-hunting-storm.dck"},
-    {"deck_a": "01-white-weenie.dck", "deck_b": "10-tron.dck"},
-    {"deck_a": "02-madness-burn.dck", "deck_b": "08-sultai-beans.dck"},
-    {"deck_a": "02-madness-burn.dck", "deck_b": "09-hunting-storm.dck"},
-    {"deck_a": "02-madness-burn.dck", "deck_b": "10-tron.dck"},
-    {"deck_a": "03-green-stompy.dck", "deck_b": "09-hunting-storm.dck"},
-    {"deck_a": "03-green-stompy.dck", "deck_b": "10-tron.dck"},
-    {"deck_a": "04-black-sacrifice.dck", "deck_b": "10-tron.dck"}
+    {
+      "deck_a": "01-white-weenie.dck",
+      "deck_b": "02-madness-burn.dck"
+    },
+    {
+      "deck_a": "01-white-weenie.dck",
+      "deck_b": "03-green-stompy.dck"
+    },
+    {
+      "deck_a": "01-white-weenie.dck",
+      "deck_b": "04-black-sacrifice.dck"
+    },
+    {
+      "deck_a": "01-white-weenie.dck",
+      "deck_b": "05-blue-terror.dck"
+    },
+    {
+      "deck_a": "01-white-weenie.dck",
+      "deck_b": "06-jund-wildfire.dck"
+    },
+    {
+      "deck_a": "01-white-weenie.dck",
+      "deck_b": "07-esper-control.dck"
+    },
+    {
+      "deck_a": "01-white-weenie.dck",
+      "deck_b": "08-sultai-beans.dck"
+    },
+    {
+      "deck_a": "01-white-weenie.dck",
+      "deck_b": "09-hunting-storm.dck"
+    },
+    {
+      "deck_a": "01-white-weenie.dck",
+      "deck_b": "10-tron.dck"
+    },
+    {
+      "deck_a": "02-madness-burn.dck",
+      "deck_b": "01-white-weenie.dck"
+    },
+    {
+      "deck_a": "02-madness-burn.dck",
+      "deck_b": "03-green-stompy.dck"
+    },
+    {
+      "deck_a": "02-madness-burn.dck",
+      "deck_b": "04-black-sacrifice.dck"
+    },
+    {
+      "deck_a": "02-madness-burn.dck",
+      "deck_b": "05-blue-terror.dck"
+    },
+    {
+      "deck_a": "02-madness-burn.dck",
+      "deck_b": "06-jund-wildfire.dck"
+    },
+    {
+      "deck_a": "02-madness-burn.dck",
+      "deck_b": "07-esper-control.dck"
+    },
+    {
+      "deck_a": "02-madness-burn.dck",
+      "deck_b": "08-sultai-beans.dck"
+    },
+    {
+      "deck_a": "02-madness-burn.dck",
+      "deck_b": "09-hunting-storm.dck"
+    },
+    {
+      "deck_a": "02-madness-burn.dck",
+      "deck_b": "10-tron.dck"
+    },
+    {
+      "deck_a": "03-green-stompy.dck",
+      "deck_b": "01-white-weenie.dck"
+    },
+    {
+      "deck_a": "03-green-stompy.dck",
+      "deck_b": "02-madness-burn.dck"
+    },
+    {
+      "deck_a": "03-green-stompy.dck",
+      "deck_b": "04-black-sacrifice.dck"
+    },
+    {
+      "deck_a": "03-green-stompy.dck",
+      "deck_b": "05-blue-terror.dck"
+    },
+    {
+      "deck_a": "03-green-stompy.dck",
+      "deck_b": "06-jund-wildfire.dck"
+    },
+    {
+      "deck_a": "03-green-stompy.dck",
+      "deck_b": "07-esper-control.dck"
+    },
+    {
+      "deck_a": "03-green-stompy.dck",
+      "deck_b": "08-sultai-beans.dck"
+    },
+    {
+      "deck_a": "03-green-stompy.dck",
+      "deck_b": "09-hunting-storm.dck"
+    },
+    {
+      "deck_a": "03-green-stompy.dck",
+      "deck_b": "10-tron.dck"
+    },
+    {
+      "deck_a": "04-black-sacrifice.dck",
+      "deck_b": "01-white-weenie.dck"
+    },
+    {
+      "deck_a": "04-black-sacrifice.dck",
+      "deck_b": "02-madness-burn.dck"
+    },
+    {
+      "deck_a": "04-black-sacrifice.dck",
+      "deck_b": "03-green-stompy.dck"
+    },
+    {
+      "deck_a": "04-black-sacrifice.dck",
+      "deck_b": "05-blue-terror.dck"
+    },
+    {
+      "deck_a": "04-black-sacrifice.dck",
+      "deck_b": "06-jund-wildfire.dck"
+    },
+    {
+      "deck_a": "04-black-sacrifice.dck",
+      "deck_b": "07-esper-control.dck"
+    },
+    {
+      "deck_a": "04-black-sacrifice.dck",
+      "deck_b": "08-sultai-beans.dck"
+    },
+    {
+      "deck_a": "04-black-sacrifice.dck",
+      "deck_b": "09-hunting-storm.dck"
+    },
+    {
+      "deck_a": "04-black-sacrifice.dck",
+      "deck_b": "10-tron.dck"
+    },
+    {
+      "deck_a": "05-blue-terror.dck",
+      "deck_b": "01-white-weenie.dck"
+    },
+    {
+      "deck_a": "05-blue-terror.dck",
+      "deck_b": "02-madness-burn.dck"
+    },
+    {
+      "deck_a": "05-blue-terror.dck",
+      "deck_b": "03-green-stompy.dck"
+    },
+    {
+      "deck_a": "05-blue-terror.dck",
+      "deck_b": "04-black-sacrifice.dck"
+    },
+    {
+      "deck_a": "05-blue-terror.dck",
+      "deck_b": "06-jund-wildfire.dck"
+    },
+    {
+      "deck_a": "05-blue-terror.dck",
+      "deck_b": "07-esper-control.dck"
+    },
+    {
+      "deck_a": "05-blue-terror.dck",
+      "deck_b": "08-sultai-beans.dck"
+    },
+    {
+      "deck_a": "05-blue-terror.dck",
+      "deck_b": "09-hunting-storm.dck"
+    },
+    {
+      "deck_a": "05-blue-terror.dck",
+      "deck_b": "10-tron.dck"
+    },
+    {
+      "deck_a": "06-jund-wildfire.dck",
+      "deck_b": "01-white-weenie.dck"
+    },
+    {
+      "deck_a": "06-jund-wildfire.dck",
+      "deck_b": "02-madness-burn.dck"
+    },
+    {
+      "deck_a": "06-jund-wildfire.dck",
+      "deck_b": "03-green-stompy.dck"
+    },
+    {
+      "deck_a": "06-jund-wildfire.dck",
+      "deck_b": "04-black-sacrifice.dck"
+    },
+    {
+      "deck_a": "06-jund-wildfire.dck",
+      "deck_b": "05-blue-terror.dck"
+    },
+    {
+      "deck_a": "06-jund-wildfire.dck",
+      "deck_b": "07-esper-control.dck"
+    },
+    {
+      "deck_a": "06-jund-wildfire.dck",
+      "deck_b": "08-sultai-beans.dck"
+    },
+    {
+      "deck_a": "06-jund-wildfire.dck",
+      "deck_b": "09-hunting-storm.dck"
+    },
+    {
+      "deck_a": "06-jund-wildfire.dck",
+      "deck_b": "10-tron.dck"
+    },
+    {
+      "deck_a": "07-esper-control.dck",
+      "deck_b": "01-white-weenie.dck"
+    },
+    {
+      "deck_a": "07-esper-control.dck",
+      "deck_b": "02-madness-burn.dck"
+    },
+    {
+      "deck_a": "07-esper-control.dck",
+      "deck_b": "03-green-stompy.dck"
+    },
+    {
+      "deck_a": "07-esper-control.dck",
+      "deck_b": "04-black-sacrifice.dck"
+    },
+    {
+      "deck_a": "07-esper-control.dck",
+      "deck_b": "05-blue-terror.dck"
+    },
+    {
+      "deck_a": "07-esper-control.dck",
+      "deck_b": "06-jund-wildfire.dck"
+    },
+    {
+      "deck_a": "07-esper-control.dck",
+      "deck_b": "08-sultai-beans.dck"
+    },
+    {
+      "deck_a": "07-esper-control.dck",
+      "deck_b": "09-hunting-storm.dck"
+    },
+    {
+      "deck_a": "07-esper-control.dck",
+      "deck_b": "10-tron.dck"
+    },
+    {
+      "deck_a": "08-sultai-beans.dck",
+      "deck_b": "01-white-weenie.dck"
+    },
+    {
+      "deck_a": "08-sultai-beans.dck",
+      "deck_b": "02-madness-burn.dck"
+    },
+    {
+      "deck_a": "08-sultai-beans.dck",
+      "deck_b": "03-green-stompy.dck"
+    },
+    {
+      "deck_a": "08-sultai-beans.dck",
+      "deck_b": "04-black-sacrifice.dck"
+    },
+    {
+      "deck_a": "08-sultai-beans.dck",
+      "deck_b": "05-blue-terror.dck"
+    },
+    {
+      "deck_a": "08-sultai-beans.dck",
+      "deck_b": "06-jund-wildfire.dck"
+    },
+    {
+      "deck_a": "08-sultai-beans.dck",
+      "deck_b": "07-esper-control.dck"
+    },
+    {
+      "deck_a": "08-sultai-beans.dck",
+      "deck_b": "09-hunting-storm.dck"
+    },
+    {
+      "deck_a": "08-sultai-beans.dck",
+      "deck_b": "10-tron.dck"
+    },
+    {
+      "deck_a": "09-hunting-storm.dck",
+      "deck_b": "01-white-weenie.dck"
+    },
+    {
+      "deck_a": "09-hunting-storm.dck",
+      "deck_b": "02-madness-burn.dck"
+    },
+    {
+      "deck_a": "09-hunting-storm.dck",
+      "deck_b": "03-green-stompy.dck"
+    },
+    {
+      "deck_a": "09-hunting-storm.dck",
+      "deck_b": "04-black-sacrifice.dck"
+    },
+    {
+      "deck_a": "09-hunting-storm.dck",
+      "deck_b": "05-blue-terror.dck"
+    },
+    {
+      "deck_a": "09-hunting-storm.dck",
+      "deck_b": "06-jund-wildfire.dck"
+    },
+    {
+      "deck_a": "09-hunting-storm.dck",
+      "deck_b": "07-esper-control.dck"
+    },
+    {
+      "deck_a": "09-hunting-storm.dck",
+      "deck_b": "08-sultai-beans.dck"
+    },
+    {
+      "deck_a": "09-hunting-storm.dck",
+      "deck_b": "10-tron.dck"
+    },
+    {
+      "deck_a": "10-tron.dck",
+      "deck_b": "01-white-weenie.dck"
+    },
+    {
+      "deck_a": "10-tron.dck",
+      "deck_b": "02-madness-burn.dck"
+    },
+    {
+      "deck_a": "10-tron.dck",
+      "deck_b": "03-green-stompy.dck"
+    },
+    {
+      "deck_a": "10-tron.dck",
+      "deck_b": "04-black-sacrifice.dck"
+    },
+    {
+      "deck_a": "10-tron.dck",
+      "deck_b": "05-blue-terror.dck"
+    },
+    {
+      "deck_a": "10-tron.dck",
+      "deck_b": "06-jund-wildfire.dck"
+    },
+    {
+      "deck_a": "10-tron.dck",
+      "deck_b": "07-esper-control.dck"
+    },
+    {
+      "deck_a": "10-tron.dck",
+      "deck_b": "08-sultai-beans.dck"
+    },
+    {
+      "deck_a": "10-tron.dck",
+      "deck_b": "09-hunting-storm.dck"
+    }
   ]
 }

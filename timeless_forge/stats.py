@@ -9,7 +9,10 @@ def wilson_interval(successes: int, trials: int, confidence: float = 0.95) -> tu
     if trials == 0:
         return 0.0, 1.0
     
-    z = 1.96 if confidence == 0.95 else 2.576  # 95% or 99%
+    z_table = {0.90: 1.645, 0.95: 1.96, 0.99: 2.576}
+    if confidence not in z_table:
+        raise ValueError(f"Unsupported confidence level: {confidence}. Supported values: {list(z_table.keys())}")
+    z = z_table[confidence]
     p_hat = successes / trials
     
     denominator = 1 + z * z / trials
