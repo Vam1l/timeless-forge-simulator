@@ -52,7 +52,16 @@ def analyze_log(log_path: Path):
     warning_patterns = [
         re.compile(r"(?i).*\b(?:warning|error|exception|severe|stack overflow|nullpointer|failed to|cannot find|script error)\b.*")
     ]
+    fatal_patterns = [
+        re.compile(r".*ClassCastException.*"),
+        re.compile(r".*ExecutionException.*"),
+        re.compile(r".*NullPointerException.*"),
+        re.compile(r".*AssertionError.*"),
+        re.compile(r".*java\.lang\.\w*(?:Exception|Error).*"),
+        re.compile(r"^\s*at forge\.ai\..*"),
+    ]
     warnings_found = []
+    fatal_exceptions_found = []
     for line in text.splitlines():
         line_clean = line.strip()
         if not line_clean:
@@ -60,6 +69,10 @@ def analyze_log(log_path: Path):
         # Exclude benign log setup / edition lines
         if "Star Trek" in line_clean or "UNKNOWN set" in line_clean or "Read cards:" in line_clean or "GuiBase:" in line_clean or "Error handling registered!" in line_clean:
             continue
+        for pat in fatal_patterns:
+            if pat.match(line_clean):
+                if line_clean not in fatal_exceptions_found:
+                    fatal_exceptions_found.append(line_clean)
         for pat in warning_patterns:
             if pat.match(line_clean):
                 if line_clean not in warnings_found:
@@ -71,6 +84,7 @@ def analyze_log(log_path: Path):
         "med_turns": med_turns,
         "avg_duration_ms": avg_duration_ms,
         "warnings": warnings_found,
+        "fatal_exceptions": fatal_exceptions_found,
     }
 
 
@@ -106,6 +120,7 @@ def main():
     total_draws = 0
     total_unparsed = 0
     all_warnings = []
+    all_fatal_exceptions = []
     all_telemetry_status = []
 
     for i, row in enumerate(rows, 1):
@@ -147,6 +162,13 @@ def main():
             
         lines.append(f"Detailed Telemetry Captured: {'YES (Mulligans, Turns, Phases, Stack Actions, Combat)' if telemetry else 'NO'}")
         
+        fatals = analysis.get("fatal_exceptions", [])
+        if fatals:
+            lines.append(f"FATAL RUNTIME EXCEPTIONS FOUND ({len(fatals)}):")
+            for f_err in fatals[:10]:
+                lines.append(f"  - {f_err}")
+            all_fatal_exceptions.extend(fatals)
+
         warns = analysis.get("warnings", [])
         if warns:
             lines.append(f"Warnings / Engine Messages ({len(warns)}):")
@@ -170,11 +192,19 @@ def main():
     lines.append(f"Total Draws: {total_draws}")
     lines.append(f"Total Unparsed Games: {total_unparsed}")
     lines.append(f"Full Play-by-Play Telemetry Status: {'SUCCESSFUL (100% of orientations)' if all(all_telemetry_status) else 'PARTIAL'}")
+    lines.append(f"Total Fatal Runtime Exceptions: {len(set(all_fatal_exceptions))}")
     lines.append(f"Total Unique Engine/AI Warnings Found: {len(set(all_warnings))}")
     lines.append("==========================================================")
 
     output_file.write_text("\n".join(lines) + "\n", encoding="utf-8")
     print(f"Wrote diagnostic index to {output_file}")
+
+    if all_fatal_exceptions or total_unparsed > 0:
+        print(f"ERROR: Diagnostic logs contain {len(set(all_fatal_exceptions))} fatal runtime exceptions and {total_unparsed} unparsed games!", file=sys.stderr)
+        for err in set(all_fatal_exceptions)[:10]:
+            print(f"  Fatal exception: {err}", file=sys.stderr)
+        return 1
+
     return 0
 
 

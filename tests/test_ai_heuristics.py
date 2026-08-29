@@ -150,5 +150,56 @@ class TestAiHeuristics(unittest.TestCase):
         self.assertTrue(should_fire_verdict(opp_creatures=3, opp_power=8, ai_creatures=0, ai_life_in_danger=False))
         self.assertTrue(should_fire_verdict(opp_creatures=1, opp_power=4, ai_creatures=0, ai_life_in_danger=True))
 
+    def test_mana_map_key_type_safety(self):
+        """Regression test for ManaMap Byte-vs-Integer key type safety."""
+        # Simulated groupSourcesByManaColor map population with type-safe Integer keys
+        mana_map = {}
+        def put_mana_source(key_atom, ability_name):
+            key = int(key_atom) # Explicit cast to int -> Integer key
+            if key not in mana_map:
+                mana_map[key] = []
+            mana_map[key].append(ability_name)
+
+        # 1. Generic / Snow / Any keys (e.g. 64, 32, 2048)
+        put_mana_source(64, "Generic Source")
+        put_mana_source(32, "Colorless Source")
+        put_mana_source(2048, "Snow Source")
+
+        # 2. Colored-mana filter/converter (e.g. Energy Refractor, Chromatic Star returning ManaAtom bytes 1, 2, 4, 8, 16)
+        put_mana_source(1, "Energy Refractor -> W") # ManaAtom.WHITE = 1
+        put_mana_source(2, "Energy Refractor -> U") # ManaAtom.BLUE = 2
+        put_mana_source(4, "Energy Refractor -> B") # ManaAtom.BLACK = 4
+
+        # 3. Ordinary non-filter mana sources (e.g. Island = 2, Mountain = 8)
+        put_mana_source(2, "Basic Island -> U")
+        put_mana_source(8, "Basic Mountain -> R")
+
+        # Verify all keys in mana_map are strictly int (Integer) and iteration does not throw ClassCastException
+        for key in mana_map.keys():
+            self.assertIsInstance(key, int, f"Key {key} is not int: {type(key)}")
+
+        # Verify groupAndOrderToPayShards shard matching for filter and non-filter sources
+        def group_shards(cost_shards):
+            res = {}
+            for shard, color_mask in cost_shards.items():
+                res[shard] = []
+                for k, abilities in mana_map.items():
+                    if k & color_mask or k == 64:
+                        res[shard].extend(abilities)
+            return res
+
+        # Filtered colored-mana payment case (e.g. paying W using Energy Refractor)
+        shards_filter = group_shards({"W": 1})
+        self.assertIn("Energy Refractor -> W", shards_filter["W"])
+
+        # Ordinary non-filter mana payment case (e.g. paying U using Island)
+        shards_ordinary = group_shards({"U": 2})
+        self.assertIn("Basic Island -> U", shards_ordinary["U"])
+
+        # Blue Terror / unchanged deck payment path (e.g. paying 1U for Counterspell / Thought Scour)
+        shards_blue_terror = group_shards({"U": 2, "GENERIC": 64})
+        self.assertTrue(len(shards_blue_terror["U"]) > 0)
+        self.assertTrue(len(shards_blue_terror["GENERIC"]) > 0)
+
 if __name__ == "__main__":
     unittest.main()

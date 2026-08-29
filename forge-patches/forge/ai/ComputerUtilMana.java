@@ -895,7 +895,7 @@ public class ComputerUtilMana {
     }
 
     private static ListMultimap<ManaCostShard, SpellAbility> groupAndOrderToPayShards(Player ai, ListMultimap<Integer, SpellAbility> manaAbilityMap, ManaCostBeingPaid cost) {
-        ListMultimap res = MultimapBuilder.enumKeys(ManaCostShard.class).arrayListValues().build();
+        ListMultimap<ManaCostShard, SpellAbility> res = MultimapBuilder.enumKeys(ManaCostShard.class).arrayListValues().build();
         if ((cost.getGenericManaAmount() > 0 || cost.hasAnyKind(512)) && manaAbilityMap.containsKey(64)) {
             res.putAll(ManaCostShard.GENERIC, manaAbilityMap.get(64));
         }
@@ -914,9 +914,10 @@ public class ComputerUtilMana {
                 continue;
             }
             if (shard == ManaCostShard.GENERIC) continue;
-            for (Integer colorint : manaAbilityMap.keySet()) {
-                if (!ai.getManaPool().canPayForShardWithColor(shard, colorint.byteValue())) continue;
-                for (SpellAbility sa : manaAbilityMap.get(colorint)) {
+            for (Number colorint : manaAbilityMap.keySet()) {
+                int colorVal = colorint.intValue();
+                if (!ai.getManaPool().canPayForShardWithColor(shard, (byte)colorVal)) continue;
+                for (SpellAbility sa : manaAbilityMap.get(colorVal)) {
                     if (res.get(shard).contains(sa)) continue;
                     res.put(shard, sa);
                 }
@@ -1149,7 +1150,7 @@ public class ComputerUtilMana {
     }
 
     private static ListMultimap<Integer, SpellAbility> groupSourcesByManaColor(Player ai, boolean checkPlayable) {
-        ArrayListMultimap manaMap = ArrayListMultimap.create();
+        ArrayListMultimap<Integer, SpellAbility> manaMap = ArrayListMultimap.create();
         Game game = ai.getGame();
         for (Card sourceCard : ComputerUtilMana.getAvailableManaSources(ai, checkPlayable)) {
             for (SpellAbility m : ComputerUtilMana.getAIPlayableMana(sourceCard)) {
@@ -1171,7 +1172,7 @@ public class ComputerUtilMana {
                         Set reflectedColors = CardUtil.getReflectableManaColors((SpellAbility)m);
                         for (MagicColor.Color color : MagicColor.Color.values()) {
                             if (!mp.canProduce(color.getShortName(), tail) && !reflectedColors.contains(color.getName())) continue;
-                            manaMap.put(ManaAtom.fromName((String)color.getName()), m);
+                            manaMap.put((int) ManaAtom.fromName((String)color.getName()), m);
                         }
                         continue;
                     }
@@ -1200,7 +1201,7 @@ public class ComputerUtilMana {
                         }
                         for (byte color : MagicColor.WUBRG) {
                             if (!"Any".equals(replaced) && !replaced.contains(MagicColor.toShortString((byte)color))) continue;
-                            manaMap.put(color, m);
+                            manaMap.put((int) color, m);
                         }
                         if (!replaced.contains("C")) continue;
                         manaMap.put(32, m);
