@@ -2,6 +2,9 @@ name: Peasant+ 10-Deck Forge AI Diagnostic
 
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - copilot/ai-balancepeasant-10deck-roundrobin
 
 permissions: read-all
 
