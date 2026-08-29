@@ -52,7 +52,7 @@ def main():
                     log_path = log_map[log_name]
 
                 if (unparsed > 0 or (requested > 0 and wins_a + wins_b + draws == 0)) and log_path and log_path.exists():
-                    log_text = log_path.read_text()
+                    log_text = log_path.read_text(encoding="utf-8")
                     ra, rb, rd, ru = parse_output(log_text, row["deck_a"], row["deck_b"], requested)
                     row["wins_a"] = str(ra)
                     row["wins_b"] = str(rb)
@@ -77,7 +77,7 @@ def main():
         batch_log_dir = logs_dir / rel_parent
         batch_log_dir.mkdir(exist_ok=True)
         dest = batch_log_dir / log_file.name
-        dest.write_text(log_file.read_text())
+        dest.write_text(log_file.read_text(encoding="utf-8"), encoding="utf-8")
     
     # Write aggregated CSV
     if all_batch_results:

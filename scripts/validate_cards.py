@@ -4,7 +4,6 @@ Validate that Forge recognizes all cards in all battlebox decks.
 Output unsupported cards to be added to unsupported-card-substitutions.md.
 """
 
-import subprocess
 import sys
 from pathlib import Path
 
