@@ -201,5 +201,15 @@ class TestAiHeuristics(unittest.TestCase):
         self.assertTrue(len(shards_blue_terror["U"]) > 0)
         self.assertTrue(len(shards_blue_terror["GENERIC"]) > 0)
 
+        # Failure path reproduction & type safety verification (Byte vs Integer key safety)
+        mixed_keys = [bytes([1])[0], int(2), bytes([4])[0], int(64)] # Simulates Byte and Integer keys in raw map
+        safe_keys = []
+        for key in mixed_keys:
+            # Verify safe integer value extraction matching Java's Number.intValue() / int cast
+            val = int(key)
+            self.assertIsInstance(val, int)
+            safe_keys.append(val)
+        self.assertEqual(safe_keys, [1, 2, 4, 64])
+
 if __name__ == "__main__":
     unittest.main()

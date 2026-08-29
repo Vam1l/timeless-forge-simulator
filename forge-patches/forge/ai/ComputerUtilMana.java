@@ -914,8 +914,9 @@ public class ComputerUtilMana {
                 continue;
             }
             if (shard == ManaCostShard.GENERIC) continue;
-            for (Number colorint : manaAbilityMap.keySet()) {
-                int colorVal = colorint.intValue();
+            for (Object key : manaAbilityMap.keySet()) {
+                if (!(key instanceof Number)) continue;
+                int colorVal = ((Number) key).intValue();
                 if (!ai.getManaPool().canPayForShardWithColor(shard, (byte)colorVal)) continue;
                 for (SpellAbility sa : manaAbilityMap.get(colorVal)) {
                     if (res.get(shard).contains(sa)) continue;
