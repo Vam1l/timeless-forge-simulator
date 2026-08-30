@@ -126,6 +126,10 @@ jobs:
             --forge-jar ./forge-${{ env.FORGE_VERSION }}.jar \
             --output diagnostic-results
 
+      - name: Generate behavioral summary
+        run: |
+          python scripts/generate_behavioral_summary.py diagnostic-results diagnostic-results/behavioral-summary.txt
+
       - name: Build diagnostic index
         run: |
           python scripts/build_diagnostic_index.py diagnostic-results diagnostic-results/diagnostic-index.txt

@@ -56,9 +56,10 @@ def analyze_log(log_path: Path):
         re.compile(r".*ClassCastException.*"),
         re.compile(r".*ExecutionException.*"),
         re.compile(r".*NullPointerException.*"),
+        re.compile(r".*StackOverflowError.*"),
         re.compile(r".*AssertionError.*"),
         re.compile(r".*java\.lang\.\w*(?:Exception|Error).*"),
-        re.compile(r"^\s*at forge\.ai\..*"),
+        re.compile(r"^\s*at forge\..*"),
     ]
     warnings_found = []
     fatal_exceptions_found = []
@@ -104,13 +105,16 @@ def main():
     with open(csv_path, encoding="utf-8") as f:
         rows = list(csv.DictReader(f))
 
+    target_games_per_orientation = int(rows[0].get("requested_games", rows[0].get("games", 20))) if rows else 20
+    total_target_games = sum(int(row.get("requested_games", row.get("games", 20))) for row in rows)
+
     lines = [
         "==========================================================",
         "PEASANT+ BATTLE BOX FORGE 2.0.14 AI DIAGNOSTIC INDEX",
         "==========================================================",
         f"Total Orientations Tested: {len(rows)}",
-        f"Target Games per Orientation: 20",
-        f"Total Target Games: {len(rows) * 20}",
+        f"Target Games per Orientation: {target_games_per_orientation}",
+        f"Total Target Games: {total_target_games}",
         "",
     ]
 
@@ -199,8 +203,8 @@ def main():
     output_file.write_text("\n".join(lines) + "\n", encoding="utf-8")
     print(f"Wrote diagnostic index to {output_file}")
 
-    if all_fatal_exceptions or total_unparsed > 0:
-        print(f"ERROR: Diagnostic logs contain {len(set(all_fatal_exceptions))} fatal runtime exceptions and {total_unparsed} unparsed games!", file=sys.stderr)
+    if all_fatal_exceptions or total_unparsed > 0 or total_games != total_target_games:
+        print(f"ERROR: Diagnostic validation failed! Total games accounted: {total_games}/{total_target_games}, Unparsed games: {total_unparsed}, Fatal exceptions: {len(set(all_fatal_exceptions))}", file=sys.stderr)
         for err in set(all_fatal_exceptions)[:10]:
             print(f"  Fatal exception: {err}", file=sys.stderr)
         return 1
