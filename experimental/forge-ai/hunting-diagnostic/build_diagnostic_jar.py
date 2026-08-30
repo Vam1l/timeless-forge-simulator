@@ -40,7 +40,7 @@ def instrument_ai_controller(text: str) -> str:
             return;
         }
         Card card = sa.getHostCard();
-        PhaseHandler ph = game.getPhaseHandler();
+        forge.game.phase.PhaseHandler ph = game.getPhaseHandler();
         CardCollection manaSources = ComputerUtilMana.getAvailableManaSources(player, true);
         int greenCapableSources = 0;
         int filters = 0;
