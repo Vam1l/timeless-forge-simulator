@@ -142,9 +142,9 @@ def analyze_behavior(results_dir: Path, output_file: Path):
 
                 # Hunting Pack
                 hp_d = any("Hunting Pack" in l for l in lines)
-                hp_orig = [l for l in lines if (f"{hs_player} cast Hunting Pack" in l or f"{hs_player} plays Hunting Pack" in l) and not ("copy" in l.lower() or "storm" in l.lower())]
-                hp_copies = [l for l in lines if "Hunting Pack" in l and ("Storm -" in l or "copy of Hunting Pack" in l.lower() or "Ability resolved (Storm" in l)]
-                hp_tokens = [l for l in lines if "Beast token" in l or "3/3 green Beast" in l or "creates a 3/3 green Beast" in l]
+                hp_orig = [l for l in lines if re.search(r"cast Hunting Pack|plays Hunting Pack", l, re.I) and not re.search(r"copy|storm", l, re.I)]
+                hp_copies = [l for l in lines if "Hunting Pack" in l and re.search(r"copy of Hunting Pack|puts a copy|Storm copy|Storm -", l, re.I)]
+                hp_tokens = [l for l in lines if re.search(r"3/3 green Beast|Beast creature token|creates a Beast|Beast token", l, re.I)]
                 hp_discs = [l for l in lines if "discards Hunting Pack" in l]
                 hp_glimpse = any("Glimpse the Impossible" in l and "Hunting Pack" in l for l in lines)
 

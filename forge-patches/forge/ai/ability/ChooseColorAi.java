@@ -25,18 +25,19 @@ public class ChooseColorAi extends SpellAbilityAi {
     @Override
     protected AiAbilityDecision checkApiLogic(Player ai, SpellAbility sa) {
         Game game = ai.getGame();
-        String sourceName = ComputerUtilAbility.getAbilitySourceName(sa);
+        Card source = sa.getHostCard();
+        String sourceName = source != null ? source.getName() : "";
         PhaseHandler phase = game.getPhaseHandler();
+
+        if ("Prismatic Strands".equals(sourceName)) {
+            return checkPrismaticStrands(ai, sa, game, phase);
+        }
 
         if (!sa.hasParam("AILogic")) {
             return new AiAbilityDecision(0, AiPlayDecision.MissingLogic);
         }
 
         String logic = sa.getParam("AILogic");
-
-        if ("Prismatic Strands".equals(sourceName) || ("MostProminentInHumanDeck".equals(logic) && sa.getHostCard() != null && "Prismatic Strands".equals(sa.getHostCard().getName()))) {
-            return checkPrismaticStrands(ai, sa, game, phase);
-        }
 
         if ("Nykthos, Shrine to Nyx".equals(sourceName)) {
             if (SpecialCardAi.NykthosShrineToNyx.consider(ai, sa)) {

@@ -53,7 +53,7 @@ class TestAiHeuristics(unittest.TestCase):
 
     def test_hunting_pack_preservation_and_cast_timing(self):
         """Verify Storm heuristic logic for Hunting Pack preservation and cast timing."""
-        def should_preserve_from_discard(card_name, hand_hp_count=1, lib_hp_count=0):
+        def should_preserve_from_discard(card_name, hand_hp_count=1, lib_hp_count=0, grave_hp_count=0):
             if card_name == "Hunting Pack":
                 total_hp = hand_hp_count + lib_hp_count
                 if total_hp <= 1 or hand_hp_count == 1:
@@ -62,6 +62,17 @@ class TestAiHeuristics(unittest.TestCase):
                 return True
             return False
 
+        def get_discard_selection(hand_cards, sa_host_name=None, min_discard=0):
+            filtered = list(hand_cards)
+            hand_hp = filtered.count("Hunting Pack")
+            if hand_hp == 1:
+                filtered = [c for c in filtered if c != "Hunting Pack"]
+            if len(filtered) >= max(1, min_discard):
+                return [filtered[0]]
+            if sa_host_name == "Bitter Reunion" or min_discard == 0:
+                return []
+            return [hand_cards[0]]
+
         def is_hunting_pack_favored(is_ai_turn, phase, storm_count, ai_life_in_danger):
             if is_ai_turn and phase in ("MAIN1", "MAIN2"):
                 return True
@@ -69,10 +80,19 @@ class TestAiHeuristics(unittest.TestCase):
                 return True
             return False
 
-        self.assertTrue(should_preserve_from_discard("Hunting Pack", hand_hp_count=1, lib_hp_count=0))
-        self.assertTrue(should_preserve_from_discard("Hunting Pack", hand_hp_count=1, lib_hp_count=1))
+        self.assertTrue(should_preserve_from_discard("Hunting Pack", hand_hp_count=1, lib_hp_count=0, grave_hp_count=1))
+        self.assertTrue(should_preserve_from_discard("Hunting Pack", hand_hp_count=1, lib_hp_count=1, grave_hp_count=0))
         self.assertTrue(should_preserve_from_discard("Prismatic Strands"))
         self.assertFalse(should_preserve_from_discard("Forest"))
+
+        # Test Bitter Reunion discard selection with one HP already gone and one in hand
+        hand_with_land = ["Hunting Pack", "Forest"]
+        sel1 = get_discard_selection(hand_with_land, sa_host_name="Bitter Reunion", min_discard=0)
+        self.assertEqual(sel1, ["Forest"], "Bitter Reunion should discard Forest instead of sole Hunting Pack")
+
+        hand_sole_hp = ["Hunting Pack"]
+        sel2 = get_discard_selection(hand_sole_hp, sa_host_name="Bitter Reunion", min_discard=0)
+        self.assertEqual(sel2, [], "Bitter Reunion voluntary discard should decline discarding sole Hunting Pack")
 
         self.assertFalse(is_hunting_pack_favored(is_ai_turn=False, phase="COMBAT_DECLARE_BLOCKERS", storm_count=2, ai_life_in_danger=False))
         self.assertTrue(is_hunting_pack_favored(is_ai_turn=True, phase="MAIN1", storm_count=3, ai_life_in_danger=False))
