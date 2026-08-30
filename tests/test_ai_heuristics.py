@@ -53,9 +53,14 @@ class TestAiHeuristics(unittest.TestCase):
 
     def test_hunting_pack_preservation_and_cast_timing(self):
         """Verify Storm heuristic logic for Hunting Pack preservation and cast timing."""
-        def should_preserve_from_discard(card_name):
-            protected_cards = {"Hunting Pack", "Prismatic Strands"}
-            return card_name in protected_cards
+        def should_preserve_from_discard(card_name, hand_hp_count=1, lib_hp_count=0):
+            if card_name == "Hunting Pack":
+                total_hp = hand_hp_count + lib_hp_count
+                if total_hp <= 1 or hand_hp_count == 1:
+                    return True
+            if card_name == "Prismatic Strands":
+                return True
+            return False
 
         def is_hunting_pack_favored(is_ai_turn, phase, storm_count, ai_life_in_danger):
             if is_ai_turn and phase in ("MAIN1", "MAIN2"):
@@ -64,7 +69,8 @@ class TestAiHeuristics(unittest.TestCase):
                 return True
             return False
 
-        self.assertTrue(should_preserve_from_discard("Hunting Pack"))
+        self.assertTrue(should_preserve_from_discard("Hunting Pack", hand_hp_count=1, lib_hp_count=0))
+        self.assertTrue(should_preserve_from_discard("Hunting Pack", hand_hp_count=1, lib_hp_count=1))
         self.assertTrue(should_preserve_from_discard("Prismatic Strands"))
         self.assertFalse(should_preserve_from_discard("Forest"))
 
@@ -104,16 +110,46 @@ class TestAiHeuristics(unittest.TestCase):
         self.assertLess(forest_score, dup_urza_score)
 
     def test_prismatic_strands_combat_use(self):
-        """Verify Prismatic Strands color selection logic for combat."""
-        def select_prismatic_strands_color(attacking_creatures_colors, opp_battlefield_colors):
-            if attacking_creatures_colors:
-                return attacking_creatures_colors[0]
-            if opp_battlefield_colors:
-                return opp_battlefield_colors[0]
-            return "White"
+        """Verify Prismatic Strands playability, flashback, and color selection logic for combat."""
+        def check_prismatic_strands_playability(life, attacker_powers_by_color):
+            max_color_dmg = max(attacker_powers_by_color.values()) if attacker_powers_by_color else 0
+            total_power = sum(attacker_powers_by_color.values()) if attacker_powers_by_color else 0
 
-        self.assertEqual(select_prismatic_strands_color(["Red", "Green"], ["Black"]), "Red")
-        self.assertEqual(select_prismatic_strands_color([], ["Black", "Red"]), "Black")
+            if total_power >= life or max_color_dmg >= life:
+                return True, "WillPlay"
+            if max_color_dmg >= 3:
+                return True, "WillPlay"
+            if life <= 6 and max_color_dmg >= 1:
+                return True, "WillPlay"
+            return False, "AnotherTime"
+
+        def select_prismatic_strands_color(attacker_powers_by_color):
+            if not attacker_powers_by_color:
+                return "White"
+            return max(attacker_powers_by_color.items(), key=lambda x: x[1])[0]
+
+        # 1. Hand cast under lethal attack
+        can_play, res = check_prismatic_strands_playability(life=10, attacker_powers_by_color={"Red": 12})
+        self.assertTrue(can_play)
+        self.assertEqual(res, "WillPlay")
+
+        # 2. Hand cast under substantial nonlethal attack
+        can_play, res = check_prismatic_strands_playability(life=20, attacker_powers_by_color={"Green": 4})
+        self.assertTrue(can_play)
+        self.assertEqual(res, "WillPlay")
+
+        # 3. No cast on trivial attack
+        can_play, res = check_prismatic_strands_playability(life=20, attacker_powers_by_color={"Black": 1})
+        self.assertFalse(can_play)
+        self.assertEqual(res, "AnotherTime")
+
+        # 4. Flashback when available under substantial attack
+        can_play, res = check_prismatic_strands_playability(life=15, attacker_powers_by_color={"Red": 5})
+        self.assertTrue(can_play)
+
+        # 5. Color selection picks color with highest incoming damage
+        best_col = select_prismatic_strands_color({"Green": 3, "Red": 6, "White": 2})
+        self.assertEqual(best_col, "Red")
 
     def test_twopilesai_fact_or_fiction_choice_behavior(self):
         """Verify TwoPilesAi / Fact or Fiction pile evaluation behavior."""

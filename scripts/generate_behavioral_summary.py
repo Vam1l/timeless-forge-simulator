@@ -52,7 +52,9 @@ def analyze_behavior(results_dir: Path, output_file: Path):
     tw_act = 0
     tw_drawn = 0
 
-    hp_cast = 0
+    hp_orig_cast = 0
+    hp_storm_copies = 0
+    hp_beast_tokens = 0
     hp_disc = 0
     hp_drawn = 0
     hp_reasons = {
@@ -140,16 +142,20 @@ def analyze_behavior(results_dir: Path, output_file: Path):
 
                 # Hunting Pack
                 hp_d = any("Hunting Pack" in l for l in lines)
-                hp_casts = [l for l in lines if f"{hs_player} cast Hunting Pack" in l]
-                hp_discs = [l for l in lines if f"discards Hunting Pack" in l]
+                hp_orig = [l for l in lines if (f"{hs_player} cast Hunting Pack" in l or f"{hs_player} plays Hunting Pack" in l) and not ("copy" in l.lower() or "storm" in l.lower())]
+                hp_copies = [l for l in lines if "Hunting Pack" in l and ("Storm -" in l or "copy of Hunting Pack" in l.lower() or "Ability resolved (Storm" in l)]
+                hp_tokens = [l for l in lines if "Beast token" in l or "3/3 green Beast" in l or "creates a 3/3 green Beast" in l]
+                hp_discs = [l for l in lines if "discards Hunting Pack" in l]
                 hp_glimpse = any("Glimpse the Impossible" in l and "Hunting Pack" in l for l in lines)
 
                 if hp_d or hp_glimpse: hp_drawn += 1
-                hp_cast += len(hp_casts)
+                hp_orig_cast += len(hp_orig)
+                hp_storm_copies += len(hp_copies)
+                hp_beast_tokens += len(hp_tokens)
                 hp_disc += len(hp_discs)
 
                 # Classify reason
-                if hp_casts:
+                if hp_orig:
                     reason = "N/A (Cast)"
                 else:
                     if not hp_d and not hp_glimpse:
@@ -179,7 +185,7 @@ def analyze_behavior(results_dir: Path, output_file: Path):
                     f"  HS Player Actions: Chromatic Star (drawn={c_star_d}, cast={c_star_c}, act={c_star_a}) | "
                     f"Chromatic Sphere (drawn={c_sph_d}, cast={c_sph_c}, act={c_sph_a}) | "
                     f"Tinder Wall (drawn={tw_d}, cast={tw_c}, act={tw_a}) | "
-                    f"Hunting Pack (cast={len(hp_casts)}, failure_reason='{reason}')"
+                    f"Hunting Pack (orig_cast={len(hp_orig)}, storm_copies={len(hp_copies)}, beast_tokens={len(hp_tokens)}, failure_reason='{reason}')"
                 )
 
             if is_esper_matchup:
@@ -218,7 +224,7 @@ def analyze_behavior(results_dir: Path, output_file: Path):
     lines_out.append(f"  - Chromatic Star: drawn={star_drawn}, cast={star_cast}, activated={star_act}")
     lines_out.append(f"  - Chromatic Sphere: drawn={sph_drawn}, cast={sph_cast}, activated={sph_act}")
     lines_out.append(f"  - Tinder Wall: drawn={tw_drawn}, cast={tw_cast}, used_mana={tw_act}")
-    lines_out.append(f"  - Hunting Pack: drawn={hp_drawn}, cast={hp_cast}, discarded={hp_disc}")
+    lines_out.append(f"  - Hunting Pack: drawn={hp_drawn}, original_cast={hp_orig_cast}, storm_copies={hp_storm_copies}, beast_tokens={hp_beast_tokens}, discarded={hp_disc}")
     lines_out.append("  - Hunting Pack Failure Reason Breakdown:")
     for r_name, r_cnt in hp_reasons.items():
         lines_out.append(f"      * {r_name}: {r_cnt}")

@@ -877,6 +877,35 @@ public class ComputerUtilCard {
         Player ai = sa.getActivatingPlayer();
         Game game = ai.getGame();
         Player opp = ai.getStrongestOpponent();
+
+        if (sa != null && sa.getHostCard() != null && "Prismatic Strands".equals(sa.getHostCard().getName())) {
+            Combat combat = game.getCombat();
+            if (combat != null && !combat.getAttackers().isEmpty()) {
+                CardCollection oppAttackers = CardLists.filterControlledBy(combat.getAttackers(), ai.getOpponents());
+                if (!oppAttackers.isEmpty()) {
+                    int maxColorDmg = -1;
+                    String bestCol = null;
+                    for (String colName : colorChoices) {
+                        byte colMask = MagicColor.fromName(colName);
+                        int colDmg = 0;
+                        for (Card c : oppAttackers) {
+                            if ((c.getColor().getColor() & colMask) != 0) {
+                                colDmg += Math.max(0, c.getNetPower());
+                            }
+                        }
+                        if (colDmg > maxColorDmg && colDmg > 0) {
+                            maxColorDmg = colDmg;
+                            bestCol = colName;
+                        }
+                    }
+                    if (bestCol != null) {
+                        chosen.add(bestCol);
+                        return chosen;
+                    }
+                }
+            }
+        }
+
         if (sa.hasParam("AILogic")) {
             String logic = sa.getParam("AILogic");
             if (logic.equals("MostProminentInHumanDeck")) {

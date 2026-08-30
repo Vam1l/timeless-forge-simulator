@@ -1,32 +1,12 @@
 {
   "name": "Peasant+ 10-Deck Forge AI Focused Behavioral Run v1.0",
-  "description": "Targeted behavioral diagnostic test: 8 seating orientations x 3 games = 24 total games without quiet mode.",
+  "description": "Targeted behavioral diagnostic smoke test: 6 seating orientations x 3 games = 18 total games without quiet mode.",
   "games_preboard": 3,
   "games_postboard": 0,
   "clock_seconds": 120,
   "deck_dir": "battlebox/decks",
   "output_dir": "../results/peasant-10deck-diagnostic",
   "matchups": [
-    {
-      "name": "09-hunting-storm-vs-07-esper-control",
-      "deck_a": "09-hunting-storm.dck",
-      "deck_b": "07-esper-control.dck"
-    },
-    {
-      "name": "07-esper-control-vs-09-hunting-storm",
-      "deck_a": "07-esper-control.dck",
-      "deck_b": "09-hunting-storm.dck"
-    },
-    {
-      "name": "09-hunting-storm-vs-06-jund-wildfire",
-      "deck_a": "09-hunting-storm.dck",
-      "deck_b": "06-jund-wildfire.dck"
-    },
-    {
-      "name": "06-jund-wildfire-vs-09-hunting-storm",
-      "deck_a": "06-jund-wildfire.dck",
-      "deck_b": "09-hunting-storm.dck"
-    },
     {
       "name": "07-esper-control-vs-01-white-weenie",
       "deck_a": "07-esper-control.dck",
@@ -46,6 +26,16 @@
       "name": "03-green-stompy-vs-07-esper-control",
       "deck_a": "03-green-stompy.dck",
       "deck_b": "07-esper-control.dck"
+    },
+    {
+      "name": "09-hunting-storm-vs-06-jund-wildfire",
+      "deck_a": "09-hunting-storm.dck",
+      "deck_b": "06-jund-wildfire.dck"
+    },
+    {
+      "name": "06-jund-wildfire-vs-09-hunting-storm",
+      "deck_a": "06-jund-wildfire.dck",
+      "deck_b": "09-hunting-storm.dck"
     }
   ]
 }

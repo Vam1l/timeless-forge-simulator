@@ -39,9 +39,9 @@ jobs:
         run: |
           python scripts/validate_battlebox.py
 
-      - name: Verify diagnostic configuration (8 matchups)
+      - name: Verify diagnostic configuration (6 matchups)
         run: |
-          python -c "import json; data = json.load(open('battlebox/diagnostic.json')); print(f'Total diagnostic matchups: {len(data[\"matchups\"])}'); assert len(data[\"matchups\"]) == 8"
+          python -c "import json; data = json.load(open('battlebox/diagnostic.json')); print(f'Total diagnostic matchups: {len(data[\"matchups\"])}'); assert len(data[\"matchups\"]) == 6"
 
   forge-setup:
     name: Download & Patch Forge 2.0.14
@@ -82,7 +82,7 @@ jobs:
             res/
 
   run-diagnostics:
-    name: "Run High-Verbosity AI Diagnostic Simulations (8 Orientations × 3 Games = 24 Total Games)"
+    name: "Run High-Verbosity AI Diagnostic Simulations (6 Orientations × 3 Games = 18 Total Games)"
     runs-on: ubuntu-latest
     needs: [validate, forge-setup]
     steps:
@@ -125,6 +125,28 @@ jobs:
           xvfb-run python scripts/run_diagnostic_batch.py \
             --forge-jar ./forge-${{ env.FORGE_VERSION }}.jar \
             --output diagnostic-results
+
+      - name: Check simulation runtime integrity
+        run: |
+          python -c "
+          import sys, glob, re
+          exceptions = ['ClassCastException', 'ExecutionException', 'NullPointerException', 'StackOverflowError', 'AssertionError']
+          failed = False
+          logs = glob.glob('diagnostic-results/*.log')
+          assert len(logs) > 0, 'No log files found!'
+          for log in logs:
+              content = open(log, 'r', encoding='utf-8', errors='ignore').read()
+              for exc in exceptions:
+                  if exc in content:
+                      print(f'Runtime exception {exc} found in {log}')
+                      failed = True
+              if re.search(r'at forge\.[a-zA-Z0-9_.]+\(', content):
+                  print(f'Forge exception stack trace found in {log}')
+                  failed = True
+          if failed:
+              sys.exit(1)
+          print('Simulation runtime integrity check PASSED: 0 exceptions found.')
+          "
 
       - name: Generate behavioral summary
         run: |

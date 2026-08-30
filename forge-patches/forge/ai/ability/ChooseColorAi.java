@@ -34,7 +34,7 @@ public class ChooseColorAi extends SpellAbilityAi {
 
         String logic = sa.getParam("AILogic");
 
-        if ("Prismatic Strands".equals(sourceName) || "MostProminentInHumanDeck".equals(logic)) {
+        if ("Prismatic Strands".equals(sourceName) || ("MostProminentInHumanDeck".equals(logic) && sa.getHostCard() != null && "Prismatic Strands".equals(sa.getHostCard().getName()))) {
             return checkPrismaticStrands(ai, sa, game, phase);
         }
 
@@ -97,19 +97,40 @@ public class ChooseColorAi extends SpellAbilityAi {
         int life = ai.getLife();
 
         if (combat != null) {
-            CardCollection attackers = combat.getAttackers();
-            CardCollection oppAttackers = CardLists.filterControlledBy(attackers, ai.getOpponents());
-            int totalCombatDmg = 0;
-            for (Card c : oppAttackers) {
-                totalCombatDmg += c.getNetPower();
-            }
+            CardCollection oppAttackers = CardLists.filterControlledBy(combat.getAttackers(), ai.getOpponents());
+            if (!oppAttackers.isEmpty()) {
+                int maxColorDamage = 0;
+                int totalPower = 0;
 
-            if (totalCombatDmg >= 3 || totalCombatDmg >= life) {
-                return new AiAbilityDecision(100, AiPlayDecision.WillPlay);
-            }
+                for (byte color : MagicColor.WUBRG) {
+                    int colPower = 0;
+                    for (Card c : oppAttackers) {
+                        if ((c.getColor().getColor() & color) != 0) {
+                            colPower += Math.max(0, c.getNetPower());
+                        }
+                    }
+                    if (colPower > maxColorDamage) {
+                        maxColorDamage = colPower;
+                    }
+                }
+                for (Card c : oppAttackers) {
+                    totalPower += Math.max(0, c.getNetPower());
+                }
 
-            if (!oppAttackers.isEmpty() && (life <= 6 || phase.is(PhaseType.COMBAT_DECLARE_BLOCKERS, ai))) {
-                return new AiAbilityDecision(100, AiPlayDecision.WillPlay);
+                // Prefer lethal prevention: total incoming damage or max single-color damage >= current life
+                if (totalPower >= life || maxColorDamage >= life) {
+                    return new AiAbilityDecision(100, AiPlayDecision.WillPlay);
+                }
+
+                // Substantial non-lethal prevention: preventing approx 3+ relevant damage
+                if (maxColorDamage >= 3) {
+                    return new AiAbilityDecision(100, AiPlayDecision.WillPlay);
+                }
+
+                // Near-lethal safety window
+                if (life <= 6 && maxColorDamage >= 1) {
+                    return new AiAbilityDecision(100, AiPlayDecision.WillPlay);
+                }
             }
         }
 

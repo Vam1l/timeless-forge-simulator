@@ -584,8 +584,9 @@ extends PlayerController {
             CardCollection filtered = new CardCollection(validCards);
             if (filtered.size() > min2) {
                 CardCollectionView hand = p.getCardsIn(ZoneType.Hand);
-                long hpCount = hand.stream().filter(c -> "Hunting Pack".equals(c.getName())).count();
-                if (hpCount <= 1) {
+                long handHpCount = hand.stream().filter(c -> "Hunting Pack".equals(c.getName())).count();
+                long libHpCount = p.getCardsIn(ZoneType.Library).stream().filter(c -> "Hunting Pack".equals(c.getName())).count();
+                if (handHpCount + libHpCount <= 1 || handHpCount == 1) {
                     filtered.removeIf(c -> "Hunting Pack".equals(c.getName()));
                 }
                 boolean facesCreatures = p.getOpponents().stream().anyMatch(opp -> opp.getCreaturesInPlay().size() > 0);
@@ -598,6 +599,12 @@ extends PlayerController {
             }
             if (filtered.size() >= min2) {
                 return this.brains.getCardsToDiscard(min2, max, filtered, sa);
+            }
+            if (sa != null && sa.getActivatingPlayer() == p) {
+                String saHostName = sa.getHostCard() != null ? sa.getHostCard().getName() : "";
+                if ("Bitter Reunion".equals(saHostName) || (sa.getParam("AILogic") != null && sa.getParam("AILogic").contains("Discard"))) {
+                    return new CardCollection();
+                }
             }
             return this.brains.getCardsToDiscard(min2, max, validCards, sa);
         }
@@ -794,6 +801,25 @@ extends PlayerController {
 
     @Override
     public CardCollectionView chooseCardsToDiscardToMaximumHandSize(int numDiscard) {
+        CardCollection validCards = new CardCollection(this.player.getCardsIn(ZoneType.Hand));
+        CardCollection filtered = new CardCollection(validCards);
+        if (filtered.size() > numDiscard) {
+            long handHpCount = validCards.stream().filter(c -> "Hunting Pack".equals(c.getName())).count();
+            long libHpCount = this.player.getCardsIn(ZoneType.Library).stream().filter(c -> "Hunting Pack".equals(c.getName())).count();
+            if (handHpCount + libHpCount <= 1 || handHpCount == 1) {
+                filtered.removeIf(c -> "Hunting Pack".equals(c.getName()));
+            }
+            boolean facesCreatures = this.player.getOpponents().stream().anyMatch(opp -> opp.getCreaturesInPlay().size() > 0);
+            if (facesCreatures) {
+                long psCount = validCards.stream().filter(c -> "Prismatic Strands".equals(c.getName())).count();
+                if (psCount <= 1) {
+                    filtered.removeIf(c -> "Prismatic Strands".equals(c.getName()));
+                }
+            }
+        }
+        if (filtered.size() >= numDiscard) {
+            return this.brains.getCardsToDiscard(numDiscard, numDiscard, filtered, null);
+        }
         return this.brains.getCardsToDiscard(numDiscard, null, null);
     }
 
@@ -942,17 +968,41 @@ extends PlayerController {
     public byte chooseColor(String message, SpellAbility sa, ColorSet colors) {
         if (sa != null && sa.getHostCard() != null && "Prismatic Strands".equals(sa.getHostCard().getName())) {
             Player p = this.player;
+            Game game = p.getGame();
+            Combat combat = game.getCombat();
+            if (combat != null && !combat.getAttackers().isEmpty()) {
+                CardCollection oppAttackers = CardLists.filterControlledBy(combat.getAttackers(), p.getOpponents());
+                if (!oppAttackers.isEmpty()) {
+                    int maxColorDamage = -1;
+                    byte bestColorMask = 0;
+                    for (byte color : MagicColor.WUBRG) {
+                        if ((colors.getColor() & color) != 0) {
+                            int colDmg = 0;
+                            for (Card c : oppAttackers) {
+                                if ((c.getColor().getColor() & color) != 0) {
+                                    colDmg += Math.max(0, c.getNetPower());
+                                }
+                            }
+                            if (colDmg > maxColorDamage && colDmg > 0) {
+                                maxColorDamage = colDmg;
+                                bestColorMask = color;
+                            }
+                        }
+                    }
+                    if (bestColorMask != 0) {
+                        return bestColorMask;
+                    }
+                }
+            }
             int maxPower = -1;
             byte bestColorMask = 0;
             for (Player opp : p.getOpponents()) {
-                for (Card attacker : opp.getCreaturesInPlay()) {
-                    if (attacker.isAttacking() || p.getLife() <= 6) {
-                        int pwr = attacker.getNetPower();
-                        byte col = attacker.getColor().getColor();
-                        if (pwr > maxPower && (colors.getColor() & col) != 0) {
-                            maxPower = pwr;
-                            bestColorMask = col;
-                        }
+                for (Card creature : opp.getCreaturesInPlay()) {
+                    int pwr = creature.getNetPower();
+                    byte col = creature.getColor().getColor();
+                    if (pwr > maxPower && (colors.getColor() & col) != 0) {
+                        maxPower = pwr;
+                        bestColorMask = col;
                     }
                 }
             }
