@@ -1,0 +1,68 @@
+==========================================================
+PEASANT+ BATTLE BOX FORGE 2.0.14 AI DIAGNOSTIC INDEX
+==========================================================
+Total Orientations Tested: 6
+Target Games per Orientation: 3
+Total Target Games: 18
+
+--- Diagnostic Matchup 01: 07-esper-control (Seat A) vs 01-white-weenie (Seat B) ---
+Matchup Name: 01-esper-control-vs-white-weenie
+Game Count Accounted: 3 (Wins A: 0, Wins B: 3, Draws: 0, Unparsed: 0)
+Game Length (Turns): Mean 12.3 turns, Median 14.0 turns
+Game Duration (Time): Mean 3.27 s per game
+Detailed Telemetry Captured: YES (Mulligans, Turns, Phases, Stack Actions, Combat)
+Warnings / Engine Messages: None detected
+
+--- Diagnostic Matchup 02: 01-white-weenie (Seat A) vs 07-esper-control (Seat B) ---
+Matchup Name: 02-white-weenie-vs-esper-control
+Game Count Accounted: 3 (Wins A: 2, Wins B: 1, Draws: 0, Unparsed: 0)
+Game Length (Turns): Mean 35.0 turns, Median 33.0 turns
+Game Duration (Time): Mean 8.17 s per game
+Detailed Telemetry Captured: YES (Mulligans, Turns, Phases, Stack Actions, Combat)
+Warnings / Engine Messages: None detected
+
+--- Diagnostic Matchup 03: 07-esper-control (Seat A) vs 03-green-stompy (Seat B) ---
+Matchup Name: 03-esper-control-vs-green-stompy
+Game Count Accounted: 3 (Wins A: 1, Wins B: 2, Draws: 0, Unparsed: 0)
+Game Length (Turns): Mean 19.3 turns, Median 13.0 turns
+Game Duration (Time): Mean 3.78 s per game
+Detailed Telemetry Captured: YES (Mulligans, Turns, Phases, Stack Actions, Combat)
+Warnings / Engine Messages: None detected
+
+--- Diagnostic Matchup 04: 03-green-stompy (Seat A) vs 07-esper-control (Seat B) ---
+Matchup Name: 04-green-stompy-vs-esper-control
+Game Count Accounted: 3 (Wins A: 3, Wins B: 0, Draws: 0, Unparsed: 0)
+Game Length (Turns): Mean 10.7 turns, Median 10.0 turns
+Game Duration (Time): Mean 2.29 s per game
+Detailed Telemetry Captured: YES (Mulligans, Turns, Phases, Stack Actions, Combat)
+Warnings / Engine Messages: None detected
+
+--- Diagnostic Matchup 05: 09-hunting-storm (Seat A) vs 06-jund-wildfire (Seat B) ---
+Matchup Name: 05-hunting-storm-vs-jund-wildfire
+Game Count Accounted: 3 (Wins A: 0, Wins B: 3, Draws: 0, Unparsed: 0)
+Game Length (Turns): Mean 15.3 turns, Median 16.0 turns
+Game Duration (Time): Mean 3.99 s per game
+Detailed Telemetry Captured: YES (Mulligans, Turns, Phases, Stack Actions, Combat)
+Warnings / Engine Messages: None detected
+
+--- Diagnostic Matchup 06: 06-jund-wildfire (Seat A) vs 09-hunting-storm (Seat B) ---
+Matchup Name: 06-jund-wildfire-vs-hunting-storm
+Game Count Accounted: 3 (Wins A: 3, Wins B: 0, Draws: 0, Unparsed: 0)
+Game Length (Turns): Mean 17.7 turns, Median 18.0 turns
+Game Duration (Time): Mean 5.28 s per game
+Detailed Telemetry Captured: YES (Mulligans, Turns, Phases, Stack Actions, Combat)
+Warnings / Engine Messages: None detected
+
+==========================================================
+SUMMARY DIAGNOSTIC OVERVIEW
+==========================================================
+Total Orientations: 6
+Total Games Accounted: 18
+Total Seat A Wins: 9
+Total Seat B Wins: 9
+Total Draws: 0
+Total Unparsed Games: 0
+Full Play-by-Play Telemetry Status: SUCCESSFUL (100% of orientations)
+Total Fatal Runtime Exceptions: 0
+Total Unique Engine/AI Warnings Found: 0
+==========================================================

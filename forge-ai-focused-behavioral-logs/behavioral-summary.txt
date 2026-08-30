@@ -1,0 +1,86 @@
+==========================================================
+PEASANT+ FORGE AI TARGETED BEHAVIORAL SUMMARY
+==========================================================
+Total Log Files Analyzed: 6
+
+--- GAME-BY-GAME CARD ACTION DETAILED BREAKDOWN ---
+
+Matchup: 01-01-esper-control-vs-white-weenie.log | Game 1
+  Esper Player Actions: Prismatic Strands (drawn=False, hand_cast=0, fb_cast=0, disc=0) | Fact or Fiction (cast=0) | Supreme Verdict (cast=0)
+
+Matchup: 01-01-esper-control-vs-white-weenie.log | Game 2
+  Esper Player Actions: Prismatic Strands (drawn=False, hand_cast=0, fb_cast=0, disc=0) | Fact or Fiction (cast=0) | Supreme Verdict (cast=0)
+
+Matchup: 01-01-esper-control-vs-white-weenie.log | Game 3
+  Esper Player Actions: Prismatic Strands (drawn=True, hand_cast=1, fb_cast=0, disc=0) | Fact or Fiction (cast=0) | Supreme Verdict (cast=0)
+
+Matchup: 02-02-white-weenie-vs-esper-control.log | Game 1
+  Esper Player Actions: Prismatic Strands (drawn=True, hand_cast=2, fb_cast=0, disc=0) | Fact or Fiction (cast=1) | Supreme Verdict (cast=0)
+
+Matchup: 02-02-white-weenie-vs-esper-control.log | Game 2
+  Esper Player Actions: Prismatic Strands (drawn=True, hand_cast=1, fb_cast=0, disc=0) | Fact or Fiction (cast=1) | Supreme Verdict (cast=1)
+
+Matchup: 02-02-white-weenie-vs-esper-control.log | Game 3
+  Esper Player Actions: Prismatic Strands (drawn=False, hand_cast=0, fb_cast=0, disc=0) | Fact or Fiction (cast=1) | Supreme Verdict (cast=0)
+
+Matchup: 03-03-esper-control-vs-green-stompy.log | Game 1
+  Esper Player Actions: Prismatic Strands (drawn=False, hand_cast=0, fb_cast=0, disc=0) | Fact or Fiction (cast=1) | Supreme Verdict (cast=0)
+
+Matchup: 03-03-esper-control-vs-green-stompy.log | Game 2
+  Esper Player Actions: Prismatic Strands (drawn=False, hand_cast=0, fb_cast=0, disc=0) | Fact or Fiction (cast=0) | Supreme Verdict (cast=0)
+
+Matchup: 03-03-esper-control-vs-green-stompy.log | Game 3
+  Esper Player Actions: Prismatic Strands (drawn=False, hand_cast=0, fb_cast=0, disc=0) | Fact or Fiction (cast=1) | Supreme Verdict (cast=0)
+
+Matchup: 04-04-green-stompy-vs-esper-control.log | Game 1
+  Esper Player Actions: Prismatic Strands (drawn=False, hand_cast=0, fb_cast=0, disc=0) | Fact or Fiction (cast=0) | Supreme Verdict (cast=0)
+
+Matchup: 04-04-green-stompy-vs-esper-control.log | Game 2
+  Esper Player Actions: Prismatic Strands (drawn=False, hand_cast=0, fb_cast=0, disc=0) | Fact or Fiction (cast=1) | Supreme Verdict (cast=0)
+
+Matchup: 04-04-green-stompy-vs-esper-control.log | Game 3
+  Esper Player Actions: Prismatic Strands (drawn=False, hand_cast=0, fb_cast=0, disc=0) | Fact or Fiction (cast=1) | Supreme Verdict (cast=0)
+
+Matchup: 05-05-hunting-storm-vs-jund-wildfire.log | Game 1
+  HS Player Actions: Chromatic Star (drawn=False, cast=0, act=0) | Chromatic Sphere (drawn=True, cast=1, act=0) | Tinder Wall (drawn=False, cast=0, act=0) | Hunting Pack (orig_cast=0, storm_copies=0, beast_tokens=0, failure_reason='never drawn')
+
+Matchup: 05-05-hunting-storm-vs-jund-wildfire.log | Game 2
+  HS Player Actions: Chromatic Star (drawn=True, cast=1, act=0) | Chromatic Sphere (drawn=False, cast=0, act=0) | Tinder Wall (drawn=True, cast=1, act=0) | Hunting Pack (orig_cast=0, storm_copies=0, beast_tokens=0, failure_reason='stranded on total mana / colors')
+
+Matchup: 05-05-hunting-storm-vs-jund-wildfire.log | Game 3
+  HS Player Actions: Chromatic Star (drawn=True, cast=1, act=0) | Chromatic Sphere (drawn=True, cast=1, act=0) | Tinder Wall (drawn=True, cast=1, act=0) | Hunting Pack (orig_cast=0, storm_copies=0, beast_tokens=0, failure_reason='never drawn')
+
+Matchup: 06-06-jund-wildfire-vs-hunting-storm.log | Game 1
+  HS Player Actions: Chromatic Star (drawn=True, cast=2, act=0) | Chromatic Sphere (drawn=True, cast=2, act=0) | Tinder Wall (drawn=True, cast=1, act=0) | Hunting Pack (orig_cast=0, storm_copies=0, beast_tokens=0, failure_reason='stranded on colors / total mana (discarded during cleanup)')
+
+Matchup: 06-06-jund-wildfire-vs-hunting-storm.log | Game 2
+  HS Player Actions: Chromatic Star (drawn=True, cast=3, act=0) | Chromatic Sphere (drawn=True, cast=3, act=0) | Tinder Wall (drawn=False, cast=0, act=0) | Hunting Pack (orig_cast=0, storm_copies=0, beast_tokens=11, failure_reason='stranded on total mana / colors')
+
+Matchup: 06-06-jund-wildfire-vs-hunting-storm.log | Game 3
+  HS Player Actions: Chromatic Star (drawn=True, cast=2, act=0) | Chromatic Sphere (drawn=False, cast=0, act=0) | Tinder Wall (drawn=True, cast=1, act=0) | Hunting Pack (orig_cast=0, storm_copies=0, beast_tokens=11, failure_reason='stranded on total mana / colors')
+
+==========================================================
+AGGREGATE BEHAVIORAL METRICS
+==========================================================
+Total Games Parsed: 18
+
+HUNTING STORM METRICS:
+  - Chromatic Star: drawn=5, cast=9, activated=0
+  - Chromatic Sphere: drawn=4, cast=7, activated=0
+  - Tinder Wall: drawn=4, cast=4, used_mana=0
+  - Hunting Pack: drawn=4, original_cast=0, storm_copies=0, beast_tokens=22, discarded=1
+  - Hunting Pack Failure Reason Breakdown:
+      * never drawn: 2
+      * exiled by Glimpse the Impossible: 0
+      * discarded by opponent: 0
+      * stranded on colors: 0
+      * stranded on total mana: 0
+      * AI declined a legal cast: 0
+      * died before setup: 0
+      * other: 4
+
+ESPER CONTROL METRICS:
+  - Prismatic Strands: drawn=3, hand_cast=4, flashback_cast=0, discarded=0
+  - Fact or Fiction Cast Count: 7
+  - Supreme Verdict Cast Count: 1
+==========================================================

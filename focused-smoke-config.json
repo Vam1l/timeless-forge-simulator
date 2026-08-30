@@ -1,0 +1,47 @@
+{
+  "name": "Forge AI Focused Behavioral Smoke Test",
+  "description": "18-game focused behavioral smoke test across 6 orientations",
+  "games_preboard": 3,
+  "games_postboard": 0,
+  "clock_seconds": 120,
+  "deck_dir": "/home/runner/work/timeless-forge-simulator/timeless-forge-simulator/battlebox/decks",
+  "output_dir": "/home/runner/work/timeless-forge-simulator/timeless-forge-simulator/forge-ai-focused-behavioral-logs",
+  "matchups": [
+    {
+      "name": "01-esper-control-vs-white-weenie",
+      "deck_a": "07-esper-control.dck",
+      "deck_b": "01-white-weenie.dck",
+      "games_preboard": 3
+    },
+    {
+      "name": "02-white-weenie-vs-esper-control",
+      "deck_a": "01-white-weenie.dck",
+      "deck_b": "07-esper-control.dck",
+      "games_preboard": 3
+    },
+    {
+      "name": "03-esper-control-vs-green-stompy",
+      "deck_a": "07-esper-control.dck",
+      "deck_b": "03-green-stompy.dck",
+      "games_preboard": 3
+    },
+    {
+      "name": "04-green-stompy-vs-esper-control",
+      "deck_a": "03-green-stompy.dck",
+      "deck_b": "07-esper-control.dck",
+      "games_preboard": 3
+    },
+    {
+      "name": "05-hunting-storm-vs-jund-wildfire",
+      "deck_a": "09-hunting-storm.dck",
+      "deck_b": "06-jund-wildfire.dck",
+      "games_preboard": 3
+    },
+    {
+      "name": "06-jund-wildfire-vs-hunting-storm",
+      "deck_a": "06-jund-wildfire.dck",
+      "deck_b": "09-hunting-storm.dck",
+      "games_preboard": 3
+    }
+  ]
+}
