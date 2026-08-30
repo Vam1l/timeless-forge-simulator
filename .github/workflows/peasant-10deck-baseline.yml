@@ -1,0 +1,101 @@
+name: Peasant+ Battle Box Baseline
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  FORGE_VERSION: "2.0.14"
+  JAVA_VERSION: "17"
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: python -m unittest discover -s tests -v
+      - run: python scripts/validate_battlebox.py
+
+  forge:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download Forge
+        run: |
+          curl --fail --location --retry 3 \
+            "https://github.com/Card-Forge/forge/releases/download/forge-${FORGE_VERSION}/forge-installer-${FORGE_VERSION}.tar.bz2" \
+            --output forge.tar.bz2
+          tar -xjf forge.tar.bz2
+          cp "forge-gui-desktop-${FORGE_VERSION}-jar-with-dependencies.jar" "forge-${FORGE_VERSION}.jar"
+          test -s "forge-${FORGE_VERSION}.jar"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: forge-${{ env.FORGE_VERSION }}
+          path: |
+            forge-${{ env.FORGE_VERSION }}.jar
+            res/
+          retention-days: 1
+
+  simulate:
+    needs: [validate, forge]
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        batch: [0, 1, 2, 3, 4, 5, 6, 7, 8]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: ${{ env.JAVA_VERSION }}
+      - run: sudo apt-get update && sudo apt-get install -y xvfb
+      - uses: actions/download-artifact@v4
+        with:
+          name: forge-${{ env.FORGE_VERSION }}
+      - name: Run ten orientations
+        env:
+          BATCH: ${{ matrix.batch }}
+        run: |
+          start=$((BATCH * 10))
+          indices=$(seq "$start" "$((start + 9))")
+          python scripts/run_matchup_batch.py \
+            --matchup-indices $indices \
+            --forge-jar "forge-${FORGE_VERSION}.jar" \
+            --output "batch-${BATCH}-results"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: battlebox-batch-${{ matrix.batch }}
+          path: batch-${{ matrix.batch }}-results/
+          if-no-files-found: error
+
+  report:
+    needs: simulate
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: battlebox-batch-*
+          path: all-results
+      - run: python scripts/aggregate_results.py all-results final-results
+      - run: python scripts/build_results_report.py final-results
+      - run: python scripts/check_anomalies.py final-results
+      - run: cat final-results/report.md >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: battlebox-baseline-results
+          path: final-results/
+          retention-days: 90
