@@ -92,14 +92,9 @@ def analyze_behavior(results_dir: Path, output_file: Path):
             lines_out.append(f"\nMatchup: {log_name} | Game {g_idx}")
 
             if is_hs_matchup:
-                hs_player = (
-                    "Ai(1)-Hunting Storm"
-                    if "09-hunting-storm-vs" in log_name
-                    else "Ai(2)-Hunting Storm"
-                )
-                opp_player = (
-                    "Ai(2)" if hs_player.startswith("Ai(1)") else "Ai(1)"
-                )
+                m_hs = re.search(r"(Ai\(\d\)-Hunting Storm)", block)
+                hs_player = m_hs.group(1) if m_hs else "Ai(1)-Hunting Storm"
+                opp_player = "Ai(2)" if hs_player.startswith("Ai(1)") else "Ai(1)"
 
                 # Star
                 c_star_d = any("Chromatic Star" in l for l in lines)
@@ -189,11 +184,8 @@ def analyze_behavior(results_dir: Path, output_file: Path):
                 )
 
             if is_esper_matchup:
-                esper_player = (
-                    "Ai(1)-Esper Control"
-                    if log_name.startswith("02") or log_name.startswith("05") or log_name.startswith("07")
-                    else "Ai(2)-Esper Control"
-                )
+                m_esper = re.search(r"(Ai\(\d\)-Esper Control)", block)
+                esper_player = m_esper.group(1) if m_esper else "Ai(1)-Esper Control"
 
                 str_d = any("Prismatic Strands" in l for l in lines)
                 str_casts = [l for l in lines if f"{esper_player} cast Prismatic Strands" in l]
