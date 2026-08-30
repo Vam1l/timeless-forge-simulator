@@ -1,0 +1,164 @@
+name: Experimental Forge AI Repair Validation
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  FORGE_VERSION: "2.0.14"
+  JAVA_VERSION: "17"
+
+jobs:
+  static-audit:
+    name: Phase 2 - repository validation and static audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: ${{ env.JAVA_VERSION }}
+      - run: git fetch origin main:refs/remotes/origin/main
+      - run: python -m unittest discover -s tests -v
+      - run: python scripts/validate_battlebox.py
+      - run: python -m compileall -q timeless_forge scripts experimental/forge-ai
+      - run: git diff --check origin/main...HEAD
+      - run: git diff --exit-code origin/main...HEAD -- battlebox/decks
+      - run: python experimental/forge-ai/static_audit.py
+
+  forge-build:
+    name: Phase 2 - compile recovered sources against Forge 2.0.14
+    needs: static-audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: ${{ env.JAVA_VERSION }}
+      - name: Download stock Forge 2.0.14
+        run: |
+          curl --fail --location --retry 3 \
+            "https://github.com/Card-Forge/forge/releases/download/forge-${FORGE_VERSION}/forge-installer-${FORGE_VERSION}.tar.bz2" \
+            --output forge.tar.bz2
+          tar -xjf forge.tar.bz2
+          cp "forge-gui-desktop-${FORGE_VERSION}-jar-with-dependencies.jar" forge-stock.jar
+          cp forge-stock.jar forge-patched.jar
+          test -s forge-stock.jar
+      - name: Compile and install exact recovered PR #2 classes
+        run: |
+          PATCHED_JAR="$PWD/forge-patched.jar"
+          cd experimental/forge-ai
+          ./apply_forge_patches.sh "$PATCHED_JAR"
+      - name: Record build identities
+        run: |
+          sha256sum forge-stock.jar forge-patched.jar > forge-build-sha256.txt
+          git rev-parse HEAD > validation-branch-sha.txt
+          printf '%s\n' '237300550e94586479bba9b1c6123af3e87cb179' > pr2-final-sha.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: forge-ai-validation-builds
+          path: |
+            forge-stock.jar
+            forge-patched.jar
+            res/
+            forge-build-sha256.txt
+            validation-branch-sha.txt
+            pr2-final-sha.txt
+          retention-days: 7
+
+  scenarios:
+    name: Phase 3 - fixed-seed functional scenarios
+    needs: forge-build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: ${{ env.JAVA_VERSION }}
+      - run: sudo apt-get update && sudo apt-get install -y xvfb
+      - uses: actions/download-artifact@v4
+        with:
+          name: forge-ai-validation-builds
+      - name: Run actual Forge AI fixed-seed scenarios
+        run: |
+          python experimental/forge-ai/run_scenarios.py \
+            --jar forge-patched.jar \
+            --deck-dir battlebox/decks \
+            --output scenario-results
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: forge-ai-deterministic-scenarios
+          path: scenario-results/
+          retention-days: 90
+
+  focused-ab:
+    name: Phases 4-6 - matched-seed focused A/B (288 games max)
+    needs: scenarios
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: ${{ env.JAVA_VERSION }}
+      - run: sudo apt-get update && sudo apt-get install -y xvfb
+      - uses: actions/download-artifact@v4
+        with:
+          name: forge-ai-validation-builds
+      - uses: actions/download-artifact@v4
+        with:
+          name: forge-ai-deterministic-scenarios
+          path: scenario-results
+      - name: Run stock and patched builds with identical conditions and seeds
+        run: |
+          python experimental/forge-ai/run_ab.py \
+            --stock forge-stock.jar \
+            --patched forge-patched.jar \
+            --deck-dir battlebox/decks \
+            --output focused-ab-results
+      - name: Build concise gate report
+        if: always()
+        run: |
+          if [ -f focused-ab-results/exceptions-timeouts.json ] && [ -f scenario-results/scenarios.json ]; then
+            python experimental/forge-ai/build_report.py \
+              --scenarios scenario-results/scenarios.json \
+              --ab-dir focused-ab-results \
+              --output focused-ab-results/report.md
+            cat focused-ab-results/report.md >> "$GITHUB_STEP_SUMMARY"
+          fi
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: forge-ai-focused-ab-results
+          path: focused-ab-results/
+          retention-days: 90
+
+  completion-note:
+    name: Validation stopping rule
+    if: always()
+    needs: [static-audit, forge-build, scenarios, focused-ab]
+    runs-on: ubuntu-latest
+    steps:
+      - name: State stopping rule
+        run: |
+          echo '# Experimental Forge AI validation stopping rule' >> "$GITHUB_STEP_SUMMARY"
+          echo '' >> "$GITHUB_STEP_SUMMARY"
+          echo 'This workflow never runs the 18,000-game baseline, never edits decks, and never expands beyond the initial 8-game/orientation focused A/B stage.' >> "$GITHUB_STEP_SUMMARY"
+          echo '' >> "$GITHUB_STEP_SUMMARY"
+          echo 'A human verbose-log review is required before any claim that an AI repair functions or before recommending a larger focused stage.' >> "$GITHUB_STEP_SUMMARY"
