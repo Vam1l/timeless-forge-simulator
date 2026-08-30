@@ -1,18 +1,13 @@
 [build-system]
-requires = ["setuptools>=68"]
+requires = ["setuptools>=45", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "timeless-forge-simulator"
+name = "timeless-forge"
 version = "0.1.0"
-description = "Reproducible Forge AI matchup orchestration for MTG Timeless"
-readme = "README.md"
+description = "Reproducible wrapper for Forge AI-vs-AI simulation"
 requires-python = ">=3.11"
 license = {text = "MIT"}
-authors = [{name = "Emmanuel Munoz"}]
-
-[project.scripts]
-timeless-forge = "timeless_forge.cli:main"
 
 [tool.setuptools.packages.find]
-where = ["src"]
+where = ["."]

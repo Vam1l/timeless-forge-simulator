@@ -1,0 +1,19 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Forge runtime data & binaries
+forge-*.jar
+forge-installer-*.tar.bz2
+res/
+data/
+
+# Results
+batch-*-results/
+diagnostic-results/
+diagnostic-config-*.json
+final-results/
+results/
+*.log
+*.tar.gz
