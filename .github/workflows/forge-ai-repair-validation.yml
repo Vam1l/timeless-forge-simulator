@@ -1,6 +1,9 @@
 name: Experimental Forge AI Repair Validation
 
 on:
+  pull_request:
+    branches:
+      - main
   workflow_dispatch:
 
 permissions:
