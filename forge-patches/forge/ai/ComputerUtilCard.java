@@ -1723,6 +1723,9 @@ public class ComputerUtilCard {
     }
 
     public static boolean isCardRemAIDeck(Card card) {
+        if (card != null && card.getGame() != null) {
+            return false;
+        }
         return card.getRules() != null && card.getRules().getAiHints().getRemAIDecks();
     }
 

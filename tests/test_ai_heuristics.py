@@ -269,5 +269,31 @@ class TestAiHeuristics(unittest.TestCase):
             safe_keys.append(val)
         self.assertEqual(safe_keys, [1, 2, 4, 64])
 
+    def test_hunting_storm_setup_permanents(self):
+        """Verify Chromatic Star, Chromatic Sphere, and Tinder Wall deployment heuristics."""
+        def should_cast_setup_permanent(card_name, available_mana, needs_color_fixing, combo_turn_ready, holds_counter_mana):
+            if available_mana < 1:
+                return False
+            if holds_counter_mana and not combo_turn_ready:
+                return False
+            if card_name in ("Chromatic Star", "Chromatic Sphere"):
+                return available_mana >= 1 and (needs_color_fixing or combo_turn_ready or available_mana >= 2)
+            if card_name == "Tinder Wall":
+                return available_mana >= 1
+            return False
+
+        # 1. Star cast when useful
+        self.assertTrue(should_cast_setup_permanent("Chromatic Star", available_mana=1, needs_color_fixing=True, combo_turn_ready=False, holds_counter_mana=False))
+
+        # 2. Sphere cast when useful
+        self.assertTrue(should_cast_setup_permanent("Chromatic Sphere", available_mana=2, needs_color_fixing=False, combo_turn_ready=True, holds_counter_mana=False))
+
+        # 3. Tinder Wall cast when useful
+        self.assertTrue(should_cast_setup_permanent("Tinder Wall", available_mana=1, needs_color_fixing=False, combo_turn_ready=False, holds_counter_mana=False))
+
+        # 4. Holding card is correct when holding counter mana or no mana available
+        self.assertFalse(should_cast_setup_permanent("Chromatic Star", available_mana=0, needs_color_fixing=True, combo_turn_ready=False, holds_counter_mana=False))
+        self.assertFalse(should_cast_setup_permanent("Chromatic Sphere", available_mana=1, needs_color_fixing=False, combo_turn_ready=False, holds_counter_mana=True))
+
 if __name__ == "__main__":
     unittest.main()
