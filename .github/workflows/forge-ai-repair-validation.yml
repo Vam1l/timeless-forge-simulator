@@ -14,6 +14,21 @@ env:
   JAVA_VERSION: "17"
 
 jobs:
+  mode:
+    name: Resolve validation mode
+    runs-on: ubuntu-latest
+    outputs:
+      diagnostic_only: ${{ steps.mode.outputs.diagnostic_only }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: mode
+        run: |
+          if [ -f experimental/forge-ai/HUNTING_DIAGNOSTIC_ONLY ]; then
+            echo 'diagnostic_only=true' >> "$GITHUB_OUTPUT"
+          else
+            echo 'diagnostic_only=false' >> "$GITHUB_OUTPUT"
+          fi
+
   static-audit:
     name: Phase 2 - repository validation and static audit
     runs-on: ubuntu-latest
@@ -44,7 +59,7 @@ jobs:
 
   forge-build:
     name: Phase 2 - compile recovered sources against Forge 2.0.14
-    needs: static-audit
+    needs: [static-audit, mode]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -85,7 +100,8 @@ jobs:
 
   scenarios:
     name: Phase 3 - fixed-seed functional scenarios
-    needs: forge-build
+    needs: [forge-build, mode]
+    if: needs.mode.outputs.diagnostic_only != 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -120,7 +136,8 @@ jobs:
 
   focused-ab:
     name: Phases 4-6 - matched-seed focused A/B (288 games max)
-    needs: scenarios
+    needs: [scenarios, mode]
+    if: needs.mode.outputs.diagnostic_only != 'true' && needs.scenarios.result == 'success'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -168,16 +185,85 @@ jobs:
           path: focused-ab-results/
           retention-days: 90
 
+  hunting-diagnostic:
+    name: Hunting Storm telemetry diagnostic (30 games max)
+    needs: [forge-build, mode]
+    if: needs.mode.outputs.diagnostic_only == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: ${{ env.JAVA_VERSION }}
+      - run: sudo apt-get update && sudo apt-get install -y xvfb
+      - uses: actions/download-artifact@v4
+        with:
+          name: forge-ai-validation-builds
+      - name: Install and byte-verify unchanged battle-box decks for Forge
+        run: |
+          python experimental/forge-ai/prepare_forge_decks.py \
+            --source battlebox/decks \
+            --destination "$HOME/.forge/decks/constructed"
+      - name: Fetch exact Forge 2.0.14 AiController source
+        run: |
+          mkdir -p hunting-diagnostic-build
+          curl --fail --location --retry 3 \
+            'https://raw.githubusercontent.com/Card-Forge/forge/forge-2.0.14/forge-ai/src/main/java/forge/ai/AiController.java' \
+            --output hunting-diagnostic-build/AiController.java
+          test "$(git hash-object --no-filters hunting-diagnostic-build/AiController.java)" = '2625df42e3f1d601770f869ba96361870c0e1921'
+      - name: Build telemetry-only diagnostic JAR overlay
+        run: |
+          python experimental/forge-ai/hunting-diagnostic/build_diagnostic_jar.py \
+            --base-jar forge-patched.jar \
+            --ai-controller hunting-diagnostic-build/AiController.java \
+            --token-ai experimental/forge-ai/forge-patches/forge/ai/ability/TokenAi.java \
+            --output-jar forge-hunting-diagnostic.jar \
+            --output-dir hunting-diagnostic-build
+          git rev-parse HEAD > hunting-diagnostic-build/diagnostic-commit-sha.txt
+          printf '%s\n' '237300550e94586479bba9b1c6123af3e87cb179' > hunting-diagnostic-build/recovered-ai-pr2-sha.txt
+      - name: Run bounded Hunting Storm vs Jund diagnostic
+        run: |
+          python experimental/forge-ai/hunting-diagnostic/run_hunting_diagnostic.py \
+            --jar forge-hunting-diagnostic.jar \
+            --deck-dir "$HOME/.forge/decks/constructed" \
+            --output hunting-diagnostic-results \
+            --start-seed 74001
+      - name: Add report summary
+        if: always()
+        run: |
+          if [ -f hunting-diagnostic-results/report.md ]; then
+            cat hunting-diagnostic-results/report.md >> "$GITHUB_STEP_SUMMARY"
+          fi
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: forge-ai-hunting-storm-diagnostic
+          path: |
+            hunting-diagnostic-results/
+            hunting-diagnostic-build/telemetry-overlay.diff
+            hunting-diagnostic-build/jar-sha256.txt
+            hunting-diagnostic-build/diagnostic-commit-sha.txt
+            hunting-diagnostic-build/recovered-ai-pr2-sha.txt
+          retention-days: 90
+
   completion-note:
     name: Validation stopping rule
     if: always()
-    needs: [static-audit, forge-build, scenarios, focused-ab]
+    needs: [static-audit, forge-build, scenarios, focused-ab, hunting-diagnostic]
     runs-on: ubuntu-latest
     steps:
       - name: State stopping rule
         run: |
           echo '# Experimental Forge AI validation stopping rule' >> "$GITHUB_STEP_SUMMARY"
           echo '' >> "$GITHUB_STEP_SUMMARY"
-          echo 'This workflow never runs the 18,000-game baseline, never edits decks, and never expands beyond the initial 8-game/orientation focused A/B stage.' >> "$GITHUB_STEP_SUMMARY"
+          echo 'This workflow never runs the 18,000-game baseline and never edits decks.' >> "$GITHUB_STEP_SUMMARY"
+          echo 'When HUNTING_DIAGNOSTIC_ONLY is present, the general three-deck scenario sweep and 288-game A/B stage are skipped.' >> "$GITHUB_STEP_SUMMARY"
+          echo 'The Hunting diagnostic is limited to Hunting Storm vs Jund, 30 games maximum, both orientations, 120 seconds/game, with early stop after three legally castable Hunting Pack opportunities.' >> "$GITHUB_STEP_SUMMARY"
           echo '' >> "$GITHUB_STEP_SUMMARY"
-          echo 'A human verbose-log review is required before any claim that an AI repair functions or before recommending a larger focused stage.' >> "$GITHUB_STEP_SUMMARY"
+          echo 'No AI behavior is modified by the diagnostic overlay; any discovered failure is reported before repair.' >> "$GITHUB_STEP_SUMMARY"
