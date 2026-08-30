@@ -17,6 +17,14 @@ This branch recovers and validates the final historical Forge 2.0.14 AI repair s
 
 All Java files under `experimental/forge-ai/forge-patches/` are referenced by the exact Git blob SHA from PR #2's final tree. They are not reconstructed or rewritten.
 
+`verify_recovered_blobs.py` is a mandatory repository-validation gate. It requires the files under `experimental/forge-ai/forge-patches/` to exactly match the documented recovered-file set and verifies each file byte-for-byte with `git hash-object --no-filters` against `RECOVERED_BLOBS.txt`. Any content change, including whitespace normalization, causes validation to fail.
+
+## Historical whitespace exclusion
+
+The recovered Forge source blobs contain pre-existing trailing whitespace and EOF blank lines from the historical PR #2 blobs. Normalizing those bytes would make the provenance claim false, so the general `git diff --check` gate excludes only `experimental/forge-ai/forge-patches/**`.
+
+That exclusion is deliberately narrow. `git diff --check` still covers every newly authored workflow, validation script, test, and documentation file in this PR. The excluded historical source tree is subject to the stricter blob-integrity gate above, plus the unchanged Forge compilation, deterministic-scenario, runtime-safety, behavioral, exception, timeout, unparsed-game, deck-identity, and stopping gates.
+
 ## Deliberately excluded from PR #2
 
 - Every battle-box deck edit
