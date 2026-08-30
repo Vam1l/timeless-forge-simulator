@@ -11,7 +11,6 @@ import difflib
 from pathlib import Path
 import shutil
 import subprocess
-import sys
 
 AI_CONTROLLER_BLOB = "2625df42e3f1d601770f869ba96361870c0e1921"
 TOKEN_AI_BLOB = "a47941e831ab308d4bd977bfc4c0e5d5119a0eda"
@@ -35,6 +34,16 @@ def instrument_ai_controller(text: str) -> str:
         return String.valueOf(value).replace("|", "/").replace("\n", " ").replace("\r", " ");
     }
 
+    private static int huntingDiagGreenAmount(String produced) {
+        if (produced == null || produced.isEmpty()) return 0;
+        if (produced.contains("Any")) return 1;
+        int green = 0;
+        for (String token : produced.trim().split("\\s+")) {
+            if ("G".equals(token)) green++;
+        }
+        return green;
+    }
+
     private void huntingDiag(String event, SpellAbility sa, String decision, String extra) {
         if (sa == null || sa.getHostCard() == null || !"Hunting Pack".equals(sa.getHostCard().getName())) {
             return;
@@ -43,26 +52,65 @@ def instrument_ai_controller(text: str) -> str:
         forge.game.phase.PhaseHandler ph = game.getPhaseHandler();
         CardCollection manaSources = ComputerUtilMana.getAvailableManaSources(player, true);
         int greenCapableSources = 0;
+        int totalGreen = 0;
         int filters = 0;
         StringBuilder sourceNames = new StringBuilder();
+        StringBuilder untappedNames = new StringBuilder();
+        StringBuilder filterAbilities = new StringBuilder();
         for (Card src : manaSources) {
             if (sourceNames.length() > 0) sourceNames.append(',');
             sourceNames.append(src.getName());
-            if ("Chromatic Star".equals(src.getName()) || "Chromatic Sphere".equals(src.getName())) filters++;
-            boolean green = false;
+            if (!src.isTapped()) {
+                if (untappedNames.length() > 0) untappedNames.append(',');
+                untappedNames.append(src.getName());
+            }
+            int sourceGreen = 0;
+            boolean filter = "Chromatic Star".equals(src.getName()) || "Chromatic Sphere".equals(src.getName());
             for (SpellAbility ma : src.getManaAbilities()) {
                 if (ma.getManaPart() == null) continue;
                 String produced = ma.getManaPart().mana(ma);
-                if (produced != null && (produced.contains("G") || produced.contains("Any"))) green = true;
+                sourceGreen = Math.max(sourceGreen, huntingDiagGreenAmount(produced));
+                if (filter) {
+                    if (filterAbilities.length() > 0) filterAbilities.append(';');
+                    filterAbilities.append(src.getName()).append(':').append(produced);
+                }
             }
-            if (green) greenCapableSources++;
+            if (sourceGreen > 0) greenCapableSources++;
+            totalGreen += sourceGreen;
+            if (filter) filters++;
         }
+
+        boolean zonePlayable = false;
+        try {
+            if (sa instanceof Spell sp) zonePlayable = sp.canPlayFromHost() != null;
+            else zonePlayable = sa.canPlay();
+        } catch (RuntimeException ex) {
+            zonePlayable = false;
+        }
+        boolean timingLegal = sa.canCastTiming(player);
+        boolean legalAfterStack = sa.isLegalAfterStack();
+        boolean restrictionsLegal = false;
+        try {
+            Card restrictionHost = card;
+            if (sa.isSpell()) {
+                restrictionHost = CardCopyService.getLKICopy(card);
+                restrictionHost.setLKICMC(-1);
+                restrictionHost.setLastKnownZone(game.getStackZone());
+                restrictionHost.setCastFrom(card.getZone());
+            }
+            restrictionsLegal = sa.checkRestrictions(restrictionHost, player);
+        } catch (RuntimeException ex) {
+            restrictionsLegal = false;
+        }
+        boolean engineLegal = zonePlayable && timingLegal && legalAfterStack && restrictionsLegal;
+
         boolean manaPayable = false;
         try {
             manaPayable = ComputerUtilMana.canPayManaCost(sa, player, 0, false);
         } catch (RuntimeException ex) {
-            // Diagnostic observation must never turn a telemetry query into an AI decision.
+            manaPayable = false;
         }
+
         StringBuilder hand = new StringBuilder();
         for (Card c : player.getCardsIn(ZoneType.Hand)) {
             if (c.isLand() || "Hunting Pack".equals(c.getName())) continue;
@@ -76,12 +124,23 @@ def instrument_ai_controller(text: str) -> str:
                 + "|active_player=" + huntingDiagClean(ph.getPlayerTurn())
                 + "|hunting_pack_zone=" + huntingDiagClean(card.getZone())
                 + "|visible_to_ai=true"
+                + "|priority_window=true"
+                + "|zone_playable=" + zonePlayable
+                + "|timing_legal=" + timingLegal
+                + "|legal_after_stack=" + legalAfterStack
+                + "|restrictions_legal=" + restrictionsLegal
+                + "|engine_legal=" + engineLegal
+                + "|payable_cost=" + huntingDiagClean(sa.getPayCosts())
                 + "|mana_pool=" + huntingDiagClean(player.getManaPool())
-                + "|mana_sources=" + huntingDiagClean(sourceNames)
+                + "|activatable_mana_sources=" + huntingDiagClean(sourceNames)
+                + "|untapped_mana_sources=" + huntingDiagClean(untappedNames)
                 + "|green_capable_sources=" + greenCapableSources
-                + "|available_green_mana=engine_tested_via_cost"
+                + "|total_producible_green=" + totalGreen
                 + "|total_producible=" + getAvailableManaEstimate(player, false)
                 + "|mana_filters=" + filters
+                + "|mana_filter_abilities=" + huntingDiagClean(filterAbilities)
+                + "|two_green_requirement=2"
+                + "|two_green_satisfied=" + manaPayable
                 + "|storm_count=" + game.getView().getStormCount()
                 + "|other_setup_candidates=" + huntingDiagClean(hand)
                 + "|mana_cost_payable=" + manaPayable
@@ -97,8 +156,7 @@ def instrument_ai_controller(text: str) -> str:
 
     old = """        return AiPlayDecision.WillPlay;\n    }\n\n    public AiPlayDecision canPlaySa(SpellAbility sa) {\n"""
     new = """        huntingDiag(\"final_decision\", sa, \"WillPlay\", \"all canPlayAndPayForFace gates passed\");\n        return AiPlayDecision.WillPlay;\n    }\n\n    public AiPlayDecision canPlaySa(SpellAbility sa) {\n"""
-    text = replace_once(text, old, new, "AiController final decision")
-    return text
+    return replace_once(text, old, new, "AiController final decision")
 
 
 def instrument_token_ai(text: str) -> str:
@@ -108,8 +166,7 @@ def instrument_token_ai(text: str) -> str:
 
     old = """        if (!((double)MyRandom.getRandom().nextFloat() <= chance)) return new AiAbilityDecision(0, AiPlayDecision.CantPlayAi);\n        return new AiAbilityDecision(100, AiPlayDecision.WillPlay);\n"""
     new = """        float huntingTokenRoll = MyRandom.getRandom().nextFloat();\n        boolean huntingTokenWillPlay = (double)huntingTokenRoll <= chance;\n        if (\"Hunting Pack\".equals(sa.getHostCard().getName())) {\n            System.out.println(\"HUNTING_DIAG|event=token_api|turn=\" + game.getPhaseHandler().getTurn()\n                    + \"|phase=\" + game.getPhaseHandler().getPhase()\n                    + \"|active_player=\" + game.getPhaseHandler().getPlayerTurn()\n                    + \"|chance=\" + chance + \"|roll=\" + huntingTokenRoll\n                    + \"|decision=\" + (huntingTokenWillPlay ? \"WillPlay\" : \"CantPlayAi\")\n                    + \"|extra=token_generation_probability\");\n        }\n        if (!huntingTokenWillPlay) return new AiAbilityDecision(0, AiPlayDecision.CantPlayAi);\n        return new AiAbilityDecision(100, AiPlayDecision.WillPlay);\n"""
-    text = replace_once(text, old, new, "TokenAi probability")
-    return text
+    return replace_once(text, old, new, "TokenAi probability")
 
 
 def main() -> int:

@@ -12,6 +12,7 @@ import sys
 FATAL = re.compile(r"ClassCastException|NullPointerException|ExecutionException|AssertionError|java\.lang\.\w*(?:Exception|Error)|^\s*at\s+forge\.", re.I | re.M)
 ILLEGAL = re.compile(r"illegal action|illegal move|cannot legally|not a legal", re.I)
 TIMEOUT = re.compile(r"timed out|timeout", re.I)
+STALL = re.compile(r"stalled|no progress|infinite loop", re.I)
 DECK_LOAD = re.compile(r"No deck found|Could not load deck|match cannot start", re.I)
 START = re.compile(r"\b(?:Turn\s+1|Mulligan|Opening Hand|Game\s+1)\b", re.I)
 RESULT = re.compile(r"Game Result:\s*Game\s+\d+\s+ended in \d+ ms\.\s*(.+?)\s+has won!", re.I)
@@ -19,6 +20,7 @@ PACK_CAST = re.compile(r"^Add To Stack: Ai\(\d+\)-Hunting Storm cast Hunting Pac
 PACK_PAYOFF = re.compile(r"Resolve Stack: Storm .*Hunting Pack|Hunting Pack.*Storm", re.I)
 PACK_TOKEN = re.compile(r"Resolve Stack: Hunting Pack .*creates a 4/4 green Beast creature token", re.I)
 PACK_LOST = re.compile(r"(?:Discard: Ai\(\d+\)-Hunting Storm discards Hunting Pack|Hunting Pack.*(?:Exile|Graveyard)|(?:Exile|Graveyard).*Hunting Pack)", re.I)
+FILTER_MANA = re.compile(r"^Mana: Chromatic (?:Star|Sphere) .*Sacrifice Chromatic (?:Star|Sphere): Add (?:one )?mana", re.I | re.M)
 DIAG = re.compile(r"^HUNTING_DIAG\|(.*)$", re.M)
 
 
@@ -40,6 +42,7 @@ def runtime_issues(rc: int, text: str):
     if FATAL.search(text): bad.append("exception_or_stack_trace")
     if ILLEGAL.search(text): bad.append("illegal_action")
     if TIMEOUT.search(text): bad.append("timeout")
+    if STALL.search(text): bad.append("stall")
     if not (START.search(text) or RESULT.search(text)): bad.append("game_not_started")
     if not RESULT.search(text): bad.append("unparsed_game")
     return bad
@@ -52,40 +55,58 @@ def run_game(jar: Path, deck_dir: Path, a: str, b: str, seed: int):
 
 
 def legal_opportunities(diag):
-    """Own-main Hunting Pack states that reached the real play path with payable mana/cost."""
+    """Return only fully proven Hunting Pack legal opportunities."""
     out=[]
+    required_true=("visible_to_ai","priority_window","zone_playable","timing_legal","legal_after_stack","restrictions_legal","engine_legal","mana_cost_payable","two_green_satisfied")
     for i,d in enumerate(diag):
         if d.get("event") != "evaluate": continue
         if not d.get("active_player","").endswith("Hunting Storm"): continue
         if d.get("phase") not in ("MAIN1","MAIN2"): continue
         if "Hunting Storm" not in d.get("hunting_pack_zone",""): continue
-        if d.get("mana_cost_payable") != "true": continue
+        if any(d.get(k) != "true" for k in required_true): continue
+        if d.get("two_green_requirement") != "2": continue
+        if not d.get("payable_cost"): continue
         turn,phase=d.get("turn"),d.get("phase")
-        subsequent=[x for x in diag[i+1:] if x.get("turn")==turn and x.get("phase")==phase]
+        subsequent=[]
+        for x in diag[i+1:]:
+            if x.get("turn") != turn or x.get("phase") != phase: continue
+            subsequent.append(x)
         evaluation=next((x for x in subsequent if x.get("event")=="ai_evaluation"),None)
         cost=next((x for x in subsequent if x.get("event")=="cost_check"),None)
         final=next((x for x in subsequent if x.get("event")=="final_decision"),None)
+        if evaluation is None: continue
         out.append({"state":d,"evaluation":evaluation,"cost":cost,"final":final})
     return out
+
+
+def first_competing_action(text: str):
+    m=re.search(r"^Add To Stack: Ai\(\d+\)-Hunting Storm cast (?!Hunting Pack\b).+$",text,re.I|re.M)
+    return m.group(0) if m else None
 
 
 def classify_game(text: str, diag):
     opportunities=legal_opportunities(diag)
     cast=PACK_CAST.search(text)
     payoff=bool(cast and PACK_PAYOFF.search(text[cast.start():]) and PACK_TOKEN.search(text[cast.start():]))
+    rejection=None
+    competing=None
     if opportunities:
         selected=opportunities[-1]
         ai_decision=(selected.get("evaluation") or {}).get("decision")
         final=(selected.get("final") or {}).get("decision")
         cost=(selected.get("cost") or {}).get("decision")
-        if cast and final=="WillPlay" and cost=="payable": status="repair demonstrated"
-        elif ai_decision and ai_decision!="WillPlay": status="repair failed"
-        elif final=="WillPlay" and not cast: status="repair failed"
-        else: status="unobservable"
-        return status, True, cast.group(0) if cast else None, payoff
+        if cast and final=="WillPlay" and cost=="payable":
+            status="repair demonstrated"
+        elif ai_decision and ai_decision!="WillPlay":
+            status="repair failed"; rejection=ai_decision; competing=first_competing_action(text)
+        elif final=="WillPlay" and not cast:
+            status="repair failed"; rejection="final WillPlay but no explicit Hunting Pack stack event"; competing=first_competing_action(text)
+        else:
+            status="unobservable"
+        return status, True, cast.group(0) if cast else None, payoff, rejection, competing
     if any(d.get("event")=="evaluate" for d in diag):
-        return "no reachable opportunity in game", False, cast.group(0) if cast else None, payoff
-    return "unobservable", False, cast.group(0) if cast else None, payoff
+        return "no reachable test state", False, cast.group(0) if cast else None, payoff, None, None
+    return "unobservable", False, cast.group(0) if cast else None, payoff, None, None
 
 
 def evidence_excerpt(text: str):
@@ -93,7 +114,7 @@ def evidence_excerpt(text: str):
     for i,line in enumerate(text.splitlines(),1):
         if "HUNTING_DIAG|" in line or "Hunting Pack" in line or "Chromatic Star" in line or "Chromatic Sphere" in line or "Tinder Wall" in line or "Add To Stack:" in line or "Mana:" in line:
             keep.append(f"{i}: {line}")
-    return keep[-100:]
+    return keep[-120:]
 
 
 def main() -> int:
@@ -102,32 +123,39 @@ def main() -> int:
     hunting="09-hunting-storm.dck"; jund="06-jund-wildfire.dck"
     for name in (hunting,jund):
         if not (deck_dir/name).is_file(): raise SystemExit(f"missing installed deck: {name}")
+
     games=[]; opportunities=[]; runtime_failure=None
     for i in range(30):
         seed=args.start_seed+i; a,b=(hunting,jund) if i%2==0 else (jund,hunting)
-        rc,text,cmd=run_game(jar,deck_dir,a,b,seed); log=args.output/f"seed-{seed}-{Path(a).stem}-vs-{Path(b).stem}.log"; log.write_text(text,encoding="utf-8")
+        rc,text,cmd=run_game(jar,deck_dir,a,b,seed)
+        log=args.output/f"seed-{seed}-{Path(a).stem}-vs-{Path(b).stem}.log"; log.write_text(text,encoding="utf-8")
         bad=runtime_issues(rc,text); diag=parse_diag(text)
         if bad:
             runtime_failure={"seed":seed,"log":log.name,"issues":bad}; games.append({"seed":seed,"orientation":f"{a} vs {b}","classification":"runtime failure","issues":bad,"log":log.name,"command":cmd}); break
-        status,opp,cast,payoff=classify_game(text,diag)
-        row={"seed":seed,"orientation":f"{a} vs {b}","classification":status,"legally_castable_opportunity":opp,"cast_event":cast,"payoff_resolved":payoff,"telemetry":diag,"opportunity_states":legal_opportunities(diag),"hunting_pack_lost_later":bool(PACK_LOST.search(text)),"log":log.name,"command":cmd,"chronological_excerpt":evidence_excerpt(text)}
+        status,opp,cast,payoff,rejection,competing=classify_game(text,diag)
+        row={"seed":seed,"orientation":f"{a} vs {b}","classification":status,"legally_castable_opportunity":opp,"cast_event":cast,"payoff_resolved":payoff,"rejection_condition":rejection,"competing_action":competing,"telemetry":diag,"opportunity_states":legal_opportunities(diag),"hunting_pack_lost_later":bool(PACK_LOST.search(text)),"mana_filter_activations":FILTER_MANA.findall(text),"log":log.name,"command":cmd,"chronological_excerpt":evidence_excerpt(text)}
         games.append(row)
         if opp:
             opportunities.append(row)
             if len(opportunities)>=3: break
+
     if runtime_failure: overall="runtime failure"
     elif any(g["classification"]=="repair failed" for g in opportunities): overall="repair failed"
     elif opportunities and all(g["classification"]=="repair demonstrated" for g in opportunities): overall="repair demonstrated"
     elif opportunities: overall="unobservable"
     elif any(g.get("telemetry") for g in games): overall="no reachable test state"
     else: overall="unobservable"
-    payload={"scope":"Hunting Storm vs Jund only","max_games":30,"clock_seconds":120,"early_stop":"3 independently reached own-main legally castable Hunting Pack states","games_run":len(games),"opportunities":len(opportunities),"overall_classification":overall,"runtime_failure":runtime_failure,"games":games}
+
+    payload={"scope":"Hunting Storm vs Jund only","max_games":30,"clock_seconds":120,"early_stop":"3 independently proven legally castable Hunting Pack states","games_run":len(games),"opportunities":len(opportunities),"overall_classification":overall,"runtime_failure":runtime_failure,"games":games}
     (args.output/"diagnostic-results.json").write_text(json.dumps(payload,indent=2)+"\n",encoding="utf-8")
+
     md=["# Hunting Storm bounded diagnostic","",f"Overall classification: **{overall}**",f"Games run: **{len(games)} / 30**",f"Legally castable opportunities observed: **{len(opportunities)} / 3 early-stop target**","","| Seed | Orientation | Classification | Cast | Payoff |","|---:|---|---|---|---|"]
     for g in games: md.append(f"| {g['seed']} | {g['orientation']} | {g['classification']} | {'yes' if g.get('cast_event') else 'no'} | {'yes' if g.get('payoff_resolved') else 'no'} |")
-    md += ["","## Claimed opportunities"]
-    if not opportunities: md.append("No game established all required legal-playability gates within the bounded search.")
-    for g in opportunities: md += ["",f"### Seed {g['seed']}","```",*g["chronological_excerpt"],"```"]
+    md += ["","## Proven opportunities"]
+    if not opportunities: md.append("No game established every required legal-playability predicate within the bounded search.")
+    for g in opportunities:
+        state=g["opportunity_states"][-1]["state"]
+        md += ["",f"### Seed {g['seed']}",f"- zone: `{state.get('hunting_pack_zone')}`",f"- payable cost: `{state.get('payable_cost')}`",f"- total producible mana: `{state.get('total_producible')}`",f"- total producible green: `{state.get('total_producible_green')}`",f"- two-green satisfied: `{state.get('two_green_satisfied')}`",f"- storm count: `{state.get('storm_count')}`",f"- AI evaluation: `{g['opportunity_states'][-1]['evaluation'].get('decision')}`",f"- final decision: `{(g['opportunity_states'][-1].get('final') or {}).get('decision')}`",f"- rejection: `{g.get('rejection_condition')}`",f"- competing action: `{g.get('competing_action')}`","","```",*g["chronological_excerpt"],"```"]
     md += ["","## Reproduction","",f"`python experimental/forge-ai/hunting-diagnostic/run_hunting_diagnostic.py --jar forge-hunting-diagnostic.jar --deck-dir $HOME/.forge/decks/constructed --output hunting-diagnostic-results --start-seed {args.start_seed}`"]
     (args.output/"report.md").write_text("\n".join(md)+"\n",encoding="utf-8")
     print(f"HUNTING DIAGNOSTIC COMPLETE: {overall}; games={len(games)} opportunities={len(opportunities)}")
