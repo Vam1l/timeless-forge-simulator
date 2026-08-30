@@ -100,11 +100,16 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           name: forge-ai-validation-builds
+      - name: Install and byte-verify unchanged battle-box decks for Forge
+        run: |
+          python experimental/forge-ai/prepare_forge_decks.py \
+            --source battlebox/decks \
+            --destination "$HOME/.forge/decks/constructed"
       - name: Run actual Forge AI fixed-seed scenarios
         run: |
           python experimental/forge-ai/run_scenarios.py \
             --jar forge-patched.jar \
-            --deck-dir battlebox/decks \
+            --deck-dir "$HOME/.forge/decks/constructed" \
             --output scenario-results
       - uses: actions/upload-artifact@v4
         if: always()
@@ -134,12 +139,17 @@ jobs:
         with:
           name: forge-ai-deterministic-scenarios
           path: scenario-results
+      - name: Install and byte-verify unchanged battle-box decks for Forge
+        run: |
+          python experimental/forge-ai/prepare_forge_decks.py \
+            --source battlebox/decks \
+            --destination "$HOME/.forge/decks/constructed"
       - name: Run stock and patched builds with identical conditions and seeds
         run: |
           python experimental/forge-ai/run_ab.py \
             --stock forge-stock.jar \
             --patched forge-patched.jar \
-            --deck-dir battlebox/decks \
+            --deck-dir "$HOME/.forge/decks/constructed" \
             --output focused-ab-results
       - name: Build concise gate report
         if: always()

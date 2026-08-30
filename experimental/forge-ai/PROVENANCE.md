@@ -25,6 +25,12 @@ The recovered Forge source blobs contain pre-existing trailing whitespace and EO
 
 That exclusion is deliberately narrow. `git diff --check` still covers every newly authored workflow, validation script, test, and documentation file in this PR. The excluded historical source tree is subject to the stricter blob-integrity gate above, plus the unchanged Forge compilation, deterministic-scenario, runtime-safety, behavioral, exception, timeout, unparsed-game, deck-identity, and stopping gates.
 
+## Forge constructed-deck harness
+
+Run #2 established that Forge 2.0.14 resolves named constructed decks from the runner user-data directory (`~/.forge/decks/constructed/`) even when the repository deck directory is supplied to the simulation command. The resulting `No deck found` / `Could not load deck` messages meant no game started, so those logs were harness failures and contained no AI behavioral evidence.
+
+Before either Phase 3 scenarios or focused A/B games, `prepare_forge_decks.py` copies the unchanged ten `battlebox/decks/*.dck` files into the resolved runner home directory and verifies every installed file byte-for-byte against the repository source. Each simulation script then performs a one-game deck-loading preflight. Behavioral execution is forbidden unless the requested deck files exist, no deck-load/runtime marker occurs, the match starts, and a parsed game result is produced. Any later deck-load failure is classified as a harness/runtime failure and stops the stage rather than being reported as a failure to demonstrate an AI behavior.
+
 ## Deliberately excluded from PR #2
 
 - Every battle-box deck edit
