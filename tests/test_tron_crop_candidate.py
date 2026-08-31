@@ -1,4 +1,5 @@
 from pathlib import Path
+import importlib.util
 import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -6,6 +7,11 @@ PATCHER = ROOT / "experimental/forge-ai/tron-crop-candidate/apply_candidate_over
 FETCH = ROOT / "experimental/forge-ai/tron-crop-candidate/apply_fetch_telemetry.py"
 HELPER = ROOT / "experimental/forge-ai/tron-crop-candidate/TronCropRotationSelection.java"
 MANA = ROOT / "experimental/forge-ai/forge-patches/forge/ai/ComputerUtilMana.java"
+RUNNER = ROOT / "experimental/forge-ai/tron-crop-candidate/run_phase4.py"
+
+spec = importlib.util.spec_from_file_location("tron_phase4_runner", RUNNER)
+runner = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(runner)
 
 
 class TronCropCandidateTests(unittest.TestCase):
@@ -17,7 +23,9 @@ class TronCropCandidateTests(unittest.TestCase):
         self.assertIn('"Library".equals(ability.getParamOrDefault("Origin", ""))', text)
         self.assertIn('"Battlefield".equals(ability.getParamOrDefault("Destination", ""))', text)
         self.assertIn('ability.getParamOrDefault("ChangeType", "").contains("Land")', text)
-        self.assertNotIn("chooseTronCropRotationAssemblySacrifice", text)
+        # The patcher defensively names the old dead symbol so it can reject it if present;
+        # it must not inject a method definition for that integration path.
+        self.assertNotIn("private static Card chooseTronCropRotationAssemblySacrifice", text)
         self.assertNotIn("10-tron.dck", text)
         self.assertNotIn("95001", text)
         self.assertNotIn("White Weenie", text)
@@ -31,8 +39,46 @@ class TronCropCandidateTests(unittest.TestCase):
     def test_fetch_telemetry_is_observational_and_crop_guarded(self):
         text = FETCH.read_text()
         self.assertIn('"Crop Rotation".equals(sa.getHostCard().getName())', text)
-        self.assertIn("TRON_CROP_FETCH", text)
-        self.assertNotIn("return c", text)
+        self.assertIn("logTronCropFetchTelemetry", text)
+        self.assertIn('tronCropFetchPath = "battlefield_best_ai"', text)
+        self.assertIn('tronCropFetchPath = "general_land_best"', text)
+        self.assertIn('"missing_distinct_piece"', text)
+        self.assertIn('c = ComputerUtilCard.getBestAI((Iterable<Card>)fetchList);', text)
+        self.assertIn('c = ComputerUtilCard.getBestLandAI((Iterable<Card>)fetchList);', text)
+        self.assertNotIn("TronCropRotationSelection", text)
+        self.assertNotIn("allowedSacrificeNames", text)
+
+    def test_fetch_parser_accepts_actual_early_battlefield_path(self):
+        line = (
+            "[TRON_CROP_FETCH] host=Crop Rotation hostId=31 api=ChangeZone "
+            "path=battlefield_best_ai origin=[Library] destination=Battlefield "
+            "legalCandidates=[Urza's Tower#13, Urza's Mine#34, Urza's Power Plant#27] "
+            "controlledLands=[Urza's Mine#35] tronPresent=[Urza's Mine] "
+            "tronMissing=[Urza's Power Plant, Urza's Tower] "
+            "missingAvailable=[Urza's Power Plant, Urza's Tower] "
+            "selected=Urza's Tower#13 classification=missing_distinct_piece"
+        )
+        parsed = runner.parse_fetch_line(line)
+        self.assertEqual(parsed["path"], "battlefield_best_ai")
+        self.assertEqual(parsed["selected"], "Urza's Tower#13")
+        self.assertEqual(parsed["classification"], "missing_distinct_piece")
+
+    def test_fetch_parser_accepts_fallback_land_path(self):
+        line = (
+            "[TRON_CROP_FETCH] host=Crop Rotation hostId=31 api=ChangeZone "
+            "path=general_land_best origin=[Library] destination=Battlefield "
+            "legalCandidates=[Forest#42] controlledLands=[Forest#44] "
+            "tronPresent=[] tronMissing=[Urza's Mine, Urza's Power Plant, Urza's Tower] "
+            "missingAvailable=[] selected=Forest#42 classification=fallback"
+        )
+        parsed = runner.parse_fetch_line(line)
+        self.assertEqual(parsed["path"], "general_land_best")
+        self.assertEqual(parsed["selected"], "Forest#42")
+        self.assertEqual(parsed["classification"], "fallback")
+
+    def test_storm_or_later_card_mentions_cannot_fake_fetch(self):
+        text = "Mana: Urza's Tower (13) - {T}: Add {C}.\nResolve Stack: Crop Rotation"
+        self.assertEqual(runner.crop_events(text)["fetches"], [])
 
     def test_historical_numeric_map_normalization_is_preserved(self):
         text = MANA.read_text()
