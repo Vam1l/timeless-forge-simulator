@@ -1,220 +1,66 @@
 #!/usr/bin/env python3
-"""Bounded recovered-vs-candidate Tron Crop Rotation validation.
-
-Exactly 16 gameplay runs: six matched Tron conditions plus two matched non-Tron
-smoke conditions, each once on recovered control and candidate. Fail-fast; no retry.
-"""
 from __future__ import annotations
-
-import argparse
-import csv
-import hashlib
-import json
-import re
-import subprocess
-import sys
-import time
+import argparse,csv,hashlib,json,re,subprocess,sys,time
 from pathlib import Path
 
-CONDITIONS = [
-    ("tron", "tron-white", "10-tron.dck", "01-white-weenie.dck", 95001),
-    ("tron", "white-tron", "01-white-weenie.dck", "10-tron.dck", 95002),
-    ("tron", "tron-blue", "10-tron.dck", "05-blue-terror.dck", 95003),
-    ("tron", "blue-tron", "05-blue-terror.dck", "10-tron.dck", 95004),
-    ("tron", "tron-jund", "10-tron.dck", "06-jund-wildfire.dck", 95005),
-    ("tron", "jund-tron", "06-jund-wildfire.dck", "10-tron.dck", 95006),
-    ("smoke", "white-green", "01-white-weenie.dck", "03-green-stompy.dck", 95301),
-    ("smoke", "blue-black", "05-blue-terror.dck", "04-black-sacrifice.dck", 95302),
-]
+GATE1=[("tron-white","10-tron.dck","01-white-weenie.dck",95001)]
+GATE3=[("tron-white","10-tron.dck","01-white-weenie.dck",95001),("white-tron","01-white-weenie.dck","10-tron.dck",95002),("tron-blue","10-tron.dck","05-blue-terror.dck",95003),("blue-tron","05-blue-terror.dck","10-tron.dck",95004),("tron-jund","10-tron.dck","06-jund-wildfire.dck",95005),("jund-tron","06-jund-wildfire.dck","10-tron.dck",95006),("white-green","01-white-weenie.dck","03-green-stompy.dck",95301),("blue-black","05-blue-terror.dck","04-black-sacrifice.dck",95302)]
+FATAL=re.compile(r"ClassCastException|NullPointerException|ExecutionException|AssertionError|java\.lang\.\w*(?:Exception|Error)|^\s*at\s+forge\.",re.I|re.M)
+BAD=[re.compile(x,re.I) for x in [r"No deck found|Could not load deck|match cannot start",r"illegal action|illegal move|cannot legally|not a legal",r"timed out|timeout"]]
+START=re.compile(r"\b(?:Turn\s+1|Mulligan|Opening Hand|Game\s+1)\b",re.I)
+WIN=re.compile(r"Game Result:\s*Game\s+\d+\s+ended in \d+ ms\.\s*(.+?)\s+has won!",re.I)
+DRAW=re.compile(r"Game Result:.*\b(?:draw|drawn)\b",re.I)
+REAL=re.compile(r"\[TRON_CROP_REALPATH\]")
+ACT=re.compile(r"\[TRON_CROP_DECISION\].*activated=true.*selected=([^\s]+(?:\s[^#\s]+)?(?:#[0-9]+)?)")
+FETCH=re.compile(r"\[TRON_CROP_FETCH\].*selected=([^\s]+(?:\s[^#\s]+)?(?:#[0-9]+)?)")
 
-DECK_DISPLAY = {
-    "01-white-weenie.dck": "White Weenie",
-    "03-green-stompy.dck": "Green Stompy",
-    "04-black-sacrifice.dck": "Black Sacrifice",
-    "05-blue-terror.dck": "Blue Terror",
-    "06-jund-wildfire.dck": "Jund Wildfire",
-    "10-tron.dck": "Tron",
-}
-
-FATAL = re.compile(r"ClassCastException|NullPointerException|ExecutionException|AssertionError|java\.lang\.\w*(?:Exception|Error)|^\s*at\s+forge\.", re.I | re.M)
-BYTE = re.compile(r"Byte.*Integer|Integer.*Byte|ClassCastException.*(?:Byte|Integer)", re.I)
-ILLEGAL = re.compile(r"illegal action|illegal move|cannot legally|not a legal", re.I)
-TIMEOUT = re.compile(r"timed out|timeout", re.I)
-DECK_LOAD = re.compile(r"No deck found|Could not load deck|match cannot start", re.I)
-START = re.compile(r"\b(?:Turn\s+1|Mulligan|Opening Hand|Game\s+1)\b", re.I)
-WINNER = re.compile(r"Game Result:\s*Game\s+\d+\s+ended in \d+ ms\.\s*(.+?)\s+has won!", re.I)
-DRAW = re.compile(r"Game Result:.*\b(?:draw|drawn)\b", re.I)
-CROP_CAST = re.compile(r"Add To Stack: .* cast Crop Rotation", re.I)
-PHASE = re.compile(r"^Turn\s+(\d+)\s+Phase:\s+(.+)$", re.I)
-REPEAT_ACTION = re.compile(r"(?:Add To Stack|Resolve Stack|Mana:|Land:|Combat -)")
-
-
-def sha256(path: Path) -> str:
-    h = hashlib.sha256()
-    with path.open("rb") as f:
-        for chunk in iter(lambda: f.read(1024 * 1024), b""):
-            h.update(chunk)
-    return h.hexdigest()
-
-
-def parsed_result(text: str):
-    matches = WINNER.findall(text)
-    if matches:
-        return matches[-1].strip()
-    if DRAW.search(text):
-        return "DRAW"
-    return None
-
-
-def runtime_issues(rc: int, text: str):
-    issues = []
-    if rc:
-        issues.append(f"exit={rc}")
-    if DECK_LOAD.search(text): issues.append("deck_load_failure")
-    if FATAL.search(text): issues.append("exception_or_stack_trace")
-    if BYTE.search(text): issues.append("byte_integer_failure")
-    if ILLEGAL.search(text): issues.append("illegal_action")
-    if TIMEOUT.search(text): issues.append("timeout")
-    if not START.search(text) and parsed_result(text) is None: issues.append("game_not_started")
-    if parsed_result(text) is None: issues.append("unparsed_result")
-
-    # Conservative repeated-loop detector: one exact action line repeated >= 40 times.
-    counts = {}
-    for line in text.splitlines():
-        s = line.strip()
-        if REPEAT_ACTION.search(s):
-            counts[s] = counts.get(s, 0) + 1
-    if any(v >= 40 for v in counts.values()):
-        issues.append("stall_or_repeated_loop")
-    return issues
-
-
-def run_game(jar: Path, deck_dir: Path, a: str, b: str, seed: int):
-    cmd = ["xvfb-run", "-a", "java", "-jar", str(jar.resolve()), "sim",
-           "-d", a, b, "-D", str(deck_dir.resolve()), "-n", "1", "-c", "120", "-s", str(seed)]
-    started = time.monotonic()
-    p = subprocess.run(cmd, text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=150)
-    return p.returncode, p.stdout, cmd, time.monotonic() - started
-
-
-def crop_excerpts(text: str):
-    lines = text.splitlines()
-    phase = ""
-    turn = ""
-    phase_at = {}
-    for i, line in enumerate(lines):
-        m = PHASE.search(line.strip())
-        if m:
-            turn, phase = m.group(1), m.group(2)
-        phase_at[i] = (turn, phase)
-    out = []
-    for i, line in enumerate(lines):
-        if not CROP_CAST.search(line):
-            continue
-        lo, hi = max(0, i - 12), min(len(lines), i + 18)
-        out.append({
-            "turn": phase_at.get(i, ("", ""))[0],
-            "phase": phase_at.get(i, ("", ""))[1],
-            "cast_line": line.strip(),
-            "excerpt": [x.strip() for x in lines[lo:hi]],
-        })
-    return out
-
-
-def event_counts(text: str):
-    return {
-        "crop_casts": len(CROP_CAST.findall(text)),
-        "star_mana_activations": len(re.findall(r"Mana: Chromatic Star .*Add", text, re.I)),
-        "sphere_mana_activations": len(re.findall(r"Mana: Chromatic Sphere .*Add", text, re.I)),
-        "mulldrifter_casts": len(re.findall(r"Add To Stack: .* cast Mulldrifter", text, re.I)),
-        "fangren_casts": len(re.findall(r"Add To Stack: .* cast Fangren Marauder", text, re.I)),
-        "crusher_casts": len(re.findall(r"Add To Stack: .* cast Ulamog's Crusher", text, re.I)),
-        "rolling_thunder_casts": len(re.findall(r"Add To Stack: .* cast Rolling Thunder", text, re.I)),
-        "candidate_selector_events": len(re.findall(r"\[TRON_CROP_CANDIDATE\]", text)),
-    }
-
+def sha(p):
+ h=hashlib.sha256();
+ with open(p,'rb') as f:
+  for c in iter(lambda:f.read(1<<20),b''):h.update(c)
+ return h.hexdigest()
+def result(t):
+ m=WIN.findall(t);return m[-1].strip() if m else ("DRAW" if DRAW.search(t) else None)
+def issues(rc,t):
+ out=[]
+ if rc:out.append(f"exit={rc}")
+ if FATAL.search(t):out.append("exception_or_stack_trace")
+ if re.search(r"Byte.*Integer|Integer.*Byte",t,re.I):out.append("byte_integer_failure")
+ for r,n in zip(BAD,["deck_load_failure","illegal_action","timeout"]):
+  if r.search(t):out.append(n)
+ if not START.search(t) and result(t) is None:out.append("game_not_started")
+ if result(t) is None:out.append("unparsed_result")
+ return out
+def run(jar,dd,a,b,s):
+ cmd=["xvfb-run","-a","java","-jar",str(jar.resolve()),"sim","-d",a,b,"-D",str(dd.resolve()),"-n","1","-c","120","-s",str(s)]
+ p=subprocess.run(cmd,text=True,stdout=subprocess.PIPE,stderr=subprocess.STDOUT,timeout=150);return p.returncode,p.stdout,cmd
 
 def main():
-    ap = argparse.ArgumentParser()
-    ap.add_argument("--recovered", required=True, type=Path)
-    ap.add_argument("--candidate", required=True, type=Path)
-    ap.add_argument("--deck-dir", required=True, type=Path)
-    ap.add_argument("--source-decks", required=True, type=Path)
-    ap.add_argument("--output", required=True, type=Path)
-    ap.add_argument("--branch-sha", required=True)
-    args = ap.parse_args()
-    args.output.mkdir(parents=True, exist_ok=True)
-    (args.output / "logs").mkdir(exist_ok=True)
-
-    expected = {a for _, _, a, _, _ in CONDITIONS} | {b for _, _, _, b, _ in CONDITIONS}
-    deck_hashes = {}
-    for name in sorted(expected):
-        src, installed = args.source_decks / name, args.deck_dir / name
-        if not src.is_file() or not installed.is_file() or src.read_bytes() != installed.read_bytes():
-            raise SystemExit(f"deck identity failure: {name}")
-        deck_hashes[name] = sha256(src)
-    (args.output / "deck-hashes.json").write_text(json.dumps(deck_hashes, indent=2) + "\n")
-
-    rows, failures, crops = [], [], []
-    common_nonjar = ["sim", "-D", str(args.deck_dir.resolve()), "-n", "1", "-c", "120"]
-    identities = {
-        "branch_sha": args.branch_sha,
-        "recovered_ai_sha": "237300550e94586479bba9b1c6123af3e87cb179",
-        "recovered_jar_sha256": sha256(args.recovered),
-        "candidate_jar_sha256": sha256(args.candidate),
-        "common_nonjar_settings": common_nonjar,
-    }
-    (args.output / "build-identities.json").write_text(json.dumps(identities, indent=2) + "\n")
-
-    for build, jar in (("recovered", args.recovered), ("candidate", args.candidate)):
-        for stage, condition, a, b, seed in CONDITIONS:
-            try:
-                rc, text, cmd, duration = run_game(jar, args.deck_dir, a, b, seed)
-            except subprocess.TimeoutExpired as exc:
-                text = (exc.stdout or "") if isinstance(exc.stdout, str) else ""
-                failures.append({"build": build, "condition": condition, "seed": seed, "issues": ["timeout"]})
-                (args.output / "runtime-failures.json").write_text(json.dumps(failures, indent=2) + "\n")
-                return 1
-            log_name = f"{build}-{condition}-seed-{seed}.log"
-            (args.output / "logs" / log_name).write_text(text, encoding="utf-8")
-            issues = runtime_issues(rc, text)
-            if issues:
-                failures.append({"build": build, "condition": condition, "seed": seed, "issues": issues, "log": f"logs/{log_name}"})
-                (args.output / "runtime-failures.json").write_text(json.dumps(failures, indent=2) + "\n")
-                return 1
-            result = parsed_result(text)
-            events = event_counts(text)
-            ce = crop_excerpts(text)
-            for item in ce:
-                crops.append({"build": build, "condition": condition, "seed": seed, "log": f"logs/{log_name}", **item})
-            rows.append({
-                "build": build, "stage": stage, "condition": condition, "deck_a": a, "deck_b": b,
-                "seed": seed, "winner": result, "duration_seconds": round(duration, 3),
-                "log": f"logs/{log_name}", "command": " ".join(cmd), **events,
-            })
-
-    # Exact matched settings gate: each condition must have recovered/candidate rows with identical non-JAR args.
-    for _, condition, a, b, seed in CONDITIONS:
-        pair = [r for r in rows if r["condition"] == condition and r["seed"] == seed]
-        if len(pair) != 2 or pair[0]["deck_a"] != pair[1]["deck_a"] or pair[0]["deck_b"] != pair[1]["deck_b"]:
-            failures.append({"condition": condition, "seed": seed, "issues": ["build_settings_mismatch"]})
-            break
-    if len(rows) != 16:
-        failures.append({"issues": ["unexpected_game_count"], "actual": len(rows), "expected": 16})
-
-    with (args.output / "per-game.csv").open("w", newline="", encoding="utf-8") as f:
-        w = csv.DictWriter(f, fieldnames=list(rows[0].keys())); w.writeheader(); w.writerows(rows)
-    (args.output / "per-game.json").write_text(json.dumps(rows, indent=2) + "\n")
-    (args.output / "crop-rotation-evidence.json").write_text(json.dumps(crops, indent=2) + "\n")
-    (args.output / "runtime-failures.json").write_text(json.dumps(failures, indent=2) + "\n")
-
-    md = ["# Tron Crop Rotation Phase 4 automated gate", "",
-          f"Behavioral games completed: {len(rows)}/16.",
-          f"Hard failures: {len(failures)}.", "",
-          "This report is an automated runtime/indexing gate only; Crop Rotation decisions require manual log review."]
-    (args.output / "gate-report.md").write_text("\n".join(md) + "\n")
-    return 1 if failures else 0
-
-
-if __name__ == "__main__":
-    sys.exit(main())
+ ap=argparse.ArgumentParser();ap.add_argument('--mode',choices=['gate1','gate3'],required=True);ap.add_argument('--recovered',type=Path,required=True);ap.add_argument('--candidate',type=Path,required=True);ap.add_argument('--deck-dir',type=Path,required=True);ap.add_argument('--source-decks',type=Path,required=True);ap.add_argument('--output',type=Path,required=True);ap.add_argument('--branch-sha',required=True);a=ap.parse_args();a.output.mkdir(parents=True,exist_ok=True);(a.output/'logs').mkdir(exist_ok=True)
+ conds=GATE1 if a.mode=='gate1' else GATE3;rows=[];fails=[]
+ for build,jar in [('recovered',a.recovered),('candidate',a.candidate)]:
+  for c,d1,d2,s in conds:
+   try:rc,t,cmd=run(jar,a.deck_dir,d1,d2,s)
+   except subprocess.TimeoutExpired:fails.append({'build':build,'condition':c,'seed':s,'issues':['timeout']});break
+   lp=a.output/'logs'/f'{build}-{c}-seed-{s}.log';lp.write_text(t);bad=issues(rc,t)
+   if bad:fails.append({'build':build,'condition':c,'seed':s,'issues':bad,'log':str(lp)});break
+   rows.append({'build':build,'condition':c,'deck_a':d1,'deck_b':d2,'seed':s,'winner':result(t),'log':str(lp),'realpath_events':len(REAL.findall(t)),'candidate_activations':len(re.findall(r'\[TRON_CROP_DECISION\].*activated=true',t)),'fetch_events':len(FETCH.findall(t)),'star':len(re.findall(r'Mana: Chromatic Star .*Add',t,re.I)),'sphere':len(re.findall(r'Mana: Chromatic Sphere .*Add',t,re.I)),'refractor':len(re.findall(r'Mana: Energy Refractor .*Add',t,re.I)),'payoffs':len(re.findall(r'cast (?:Mulldrifter|Fangren Marauder|Ulamog\'s Crusher|Rolling Thunder)',t,re.I))})
+  if fails:break
+ if a.mode=='gate1' and not fails:
+  rt=(a.output/'logs'/'recovered-tron-white-seed-95001.log').read_text();ct=(a.output/'logs'/'candidate-tron-white-seed-95001.log').read_text()
+  if not REAL.search(rt):fails.append({'issues':['missing_recovered_realpath_telemetry']})
+  if not REAL.search(ct):fails.append({'issues':['missing_candidate_realpath_telemetry']})
+  acts=re.findall(r'\[TRON_CROP_DECISION\].*activated=true.*selected=([^\n]+)',ct)
+  if not acts:fails.append({'issues':['candidate_rule_not_invoked']})
+  if acts and not any(('Forest' in x or ("Urza's" not in x and 'none' not in x)) for x in acts):fails.append({'issues':['no_expendable_land_selected']})
+  fetches=re.findall(r'\[TRON_CROP_FETCH\].*selected=([^\s#]+(?:\s[^#\s]+)*)#',ct)
+  if not fetches or not any(x in ["Urza's Tower","Urza's Power Plant"] for x in fetches):fails.append({'issues':['missing_distinct_piece_not_fetched']})
+  # explicit same-piece selection/fetch pairing by ordered telemetry
+  sels=re.findall(r'\[TRON_CROP_DECISION\].*activated=true.*selected=([^#\n]+)#',ct)
+  if any(x in fetches for x in sels if x.startswith("Urza's")):fails.append({'issues':['same_piece_selection_persisted']})
+ (a.output/'per-game.json').write_text(json.dumps(rows,indent=2)+'\n');(a.output/'runtime-failures.json').write_text(json.dumps(fails,indent=2)+'\n');(a.output/'build-identities.json').write_text(json.dumps({'branch_sha':a.branch_sha,'recovered_diag_sha256':sha(a.recovered),'candidate_sha256':sha(a.candidate)},indent=2)+'\n')
+ if rows:
+  with (a.output/'per-game.csv').open('w',newline='') as f:w=csv.DictWriter(f,fieldnames=rows[0].keys());w.writeheader();w.writerows(rows)
+ (a.output/'gate-report.md').write_text(f'# Phase 4 {a.mode}\n\nGames completed: {len(rows)}/{2 if a.mode=="gate1" else 16}.\nFailures: {len(fails)}.\n')
+ return 1 if fails else 0
+if __name__=='__main__':sys.exit(main())

@@ -1,4 +1,4 @@
-name: Tron Crop Rotation Candidate Validation
+name: Tron Crop Rotation Candidate Validation v2
 
 on:
   pull_request:
@@ -14,23 +14,16 @@ env:
   RECOVERED_AI_SHA: "237300550e94586479bba9b1c6123af3e87cb179"
   VALIDATED_BASE_SHA: "29ac1c40fee5a7058f040398654198ae270f5b22"
   PR7_BASE_SHA: "c857f2d5667143140b94d4105a6ef065dd256728"
-  PRODUCTION_MAIN_SHA: "ee667eb8b110cd985578eef2acc3e9c97db861c8"
 
 jobs:
-  static-validation:
-    name: Repository, provenance, and candidate regression tests
+  provenance:
+    name: Provenance and source guards
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
+        with: {fetch-depth: 0}
       - uses: actions/setup-python@v5
-        with:
-          python-version: "3.11"
-      - uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: ${{ env.JAVA_VERSION }}
+        with: {python-version: "3.11"}
       - name: Verify isolated Phase 4 mode
         run: |
           test -f experimental/forge-ai/TRON_CROP_CANDIDATE_ONLY
@@ -39,175 +32,160 @@ jobs:
           test ! -f experimental/forge-ai/HUNTING_AB_ONLY
       - name: Fetch production main
         run: git fetch origin main:refs/remotes/origin/main
-      - name: Repository unit tests
-        run: python -m unittest discover -s tests -v
-      - name: Java selector regression tests using production candidate helper
+      - name: Validate unchanged repository inputs
         run: |
-          mkdir -p candidate-java-tests
-          javac -d candidate-java-tests \
-            experimental/forge-ai/tron-crop-candidate/TronCropRotationSelection.java \
-            experimental/forge-ai/tron-crop-candidate/TronCropRotationSelectionTest.java
-          java -cp candidate-java-tests forge.ai.TronCropRotationSelectionTest | tee tron-selector-java-tests.txt
-      - name: Validate all ten unchanged decks
-        run: python scripts/validate_battlebox.py
-      - name: Python compilation
-        run: python -m compileall -q timeless_forge scripts experimental/forge-ai
-      - name: Verify immutable historical recovered blobs
-        run: python experimental/forge-ai/verify_recovered_blobs.py | tee recovered-blob-verification.txt
-      - name: Verify authored-file whitespace
-        run: git diff --check origin/main...HEAD -- . ':(exclude)experimental/forge-ai/forge-patches/**'
-      - name: Verify complete deck directory byte-identical to production main
-        run: git diff --exit-code origin/main...HEAD -- battlebox/decks
-      - name: Verify candidate branch did not edit immutable recovered blobs
-        run: test -z "$(git diff --name-only "$PR7_BASE_SHA"...HEAD -- experimental/forge-ai/forge-patches battlebox/decks)"
-      - name: Preserve recovered numeric-map safety structurally
-        run: |
+          python scripts/validate_battlebox.py
+          python -m compileall -q timeless_forge scripts experimental/forge-ai
+          python experimental/forge-ai/verify_recovered_blobs.py | tee recovered-blob-verification.txt
+          git diff --check origin/main...HEAD -- . ':(exclude)experimental/forge-ai/forge-patches/**'
+          git diff --exit-code origin/main...HEAD -- battlebox/decks
+          test -z "$(git diff --name-only "$PR7_BASE_SHA"...HEAD -- experimental/forge-ai/forge-patches battlebox/decks)"
           grep -q 'instanceof Number' experimental/forge-ai/forge-patches/forge/ai/ComputerUtilMana.java
           grep -q '((Number) key).intValue()' experimental/forge-ai/forge-patches/forge/ai/ComputerUtilMana.java
           grep -q 'ArrayListMultimap<Integer, SpellAbility>' experimental/forge-ai/forge-patches/forge/ai/ComputerUtilMana.java
       - uses: actions/upload-artifact@v4
         with:
-          name: tron-crop-static-evidence
-          path: |
-            tron-selector-java-tests.txt
-            recovered-blob-verification.txt
+          name: tron-crop-v2-provenance
+          path: recovered-blob-verification.txt
           retention-days: 90
 
-  forge-builds:
-    name: Build stock, exact recovered, and Tron candidate Forge 2.0.14
-    needs: static-validation
+  builds:
+    name: Build exact recovered control telemetry and corrected candidate
+    needs: provenance
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
+        with: {fetch-depth: 0}
       - uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: ${{ env.JAVA_VERSION }}
+        with: {distribution: temurin, java-version: "17"}
       - uses: actions/setup-python@v5
-        with:
-          python-version: "3.11"
-      - name: Download stock Forge 2.0.14
+        with: {python-version: "3.11"}
+      - name: Download stock Forge and build exact recovered
         run: |
-          curl --fail --location --retry 3 \
-            "https://github.com/Card-Forge/forge/releases/download/forge-${FORGE_VERSION}/forge-installer-${FORGE_VERSION}.tar.bz2" \
-            --output forge.tar.bz2
+          curl --fail --location --retry 3 "https://github.com/Card-Forge/forge/releases/download/forge-${FORGE_VERSION}/forge-installer-${FORGE_VERSION}.tar.bz2" --output forge.tar.bz2
           tar -xjf forge.tar.bz2
           cp "forge-gui-desktop-${FORGE_VERSION}-jar-with-dependencies.jar" forge-stock.jar
-          cp forge-stock.jar forge-recovered.jar
-      - name: Compile exact immutable recovered PR2 classes
+          cp forge-stock.jar forge-recovered-exact.jar
+          RECOVERED_JAR="$PWD/forge-recovered-exact.jar"; cd experimental/forge-ai; ./apply_forge_patches.sh "$RECOVERED_JAR"
+      - name: Fetch exact Forge ComputerUtil and build v2 overlays
         run: |
-          RECOVERED_JAR="$PWD/forge-recovered.jar"
-          cd experimental/forge-ai
-          ./apply_forge_patches.sh "$RECOVERED_JAR"
-      - name: Fetch exact Forge 2.0.14 ComputerUtil source
-        run: |
-          mkdir -p tron-candidate-build
-          curl --fail --location --retry 3 \
-            'https://raw.githubusercontent.com/Card-Forge/forge/forge-2.0.14/forge-ai/src/main/java/forge/ai/ComputerUtil.java' \
-            --output tron-candidate-build/ComputerUtil.java
-          git hash-object --no-filters tron-candidate-build/ComputerUtil.java > tron-candidate-build/stock-computer-util-git-blob.txt
-      - name: Build candidate as overlay on exact recovered JAR
-        run: |
+          mkdir -p tron-v2-build
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/Card-Forge/forge/forge-2.0.14/forge-ai/src/main/java/forge/ai/ComputerUtil.java' --output tron-v2-build/ComputerUtil.java
           bash experimental/forge-ai/tron-crop-candidate/build_candidate_jar.sh \
-            forge-recovered.jar \
-            tron-candidate-build/ComputerUtil.java \
-            forge-tron-candidate.jar \
-            tron-candidate-build/overlay
-      - name: Record three build identities and immutable provenance
+            forge-recovered-exact.jar tron-v2-build/ComputerUtil.java \
+            experimental/forge-ai/forge-patches/forge/ai/ability/ChangeZoneAi.java \
+            forge-recovered-diagnostic.jar forge-tron-candidate.jar tron-v2-build/overlay
+      - name: Record build identities
         run: |
-          sha256sum forge-stock.jar forge-recovered.jar forge-tron-candidate.jar > forge-three-build-sha256.txt
+          sha256sum forge-stock.jar forge-recovered-exact.jar forge-recovered-diagnostic.jar forge-tron-candidate.jar > forge-four-build-sha256.txt
           git rev-parse HEAD > candidate-branch-sha.txt
-          printf '%s\n' "$PR7_BASE_SHA" > pr7-source-head-sha.txt
-          printf '%s\n' "$VALIDATED_BASE_SHA" > validated-recovered-base-sha.txt
-          printf '%s\n' "$RECOVERED_AI_SHA" > recovered-ai-pr2-sha.txt
-          cp experimental/forge-ai/RECOVERED_BLOBS.txt recovered-blobs.txt
           git diff --name-status "$PR7_BASE_SHA"...HEAD > candidate-branch-diff-files.txt
       - uses: actions/upload-artifact@v4
         with:
-          name: tron-crop-builds
+          name: tron-crop-v2-builds
           path: |
             forge-stock.jar
-            forge-recovered.jar
+            forge-recovered-exact.jar
+            forge-recovered-diagnostic.jar
             forge-tron-candidate.jar
             res/
-            forge-three-build-sha256.txt
+            forge-four-build-sha256.txt
             candidate-branch-sha.txt
-            pr7-source-head-sha.txt
-            validated-recovered-base-sha.txt
-            recovered-ai-pr2-sha.txt
-            recovered-blobs.txt
             candidate-branch-diff-files.txt
-            tron-candidate-build/stock-computer-util-git-blob.txt
-            tron-candidate-build/overlay/candidate-overlay.diff
-            tron-candidate-build/overlay/recovered-candidate-sha256.txt
+            tron-v2-build/overlay/*.diff
+            tron-v2-build/overlay/build-sha256.txt
           retention-days: 7
 
-  bounded-runtime:
-    name: Exact seed replay plus bounded Tron candidate runtime (16 games)
-    needs: forge-builds
+  gate1:
+    name: Gate 1 exact seed-95001 real-path proof (2 games)
+    needs: builds
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
       - uses: actions/setup-python@v5
-        with:
-          python-version: "3.11"
+        with: {python-version: "3.11"}
       - uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: ${{ env.JAVA_VERSION }}
+        with: {distribution: temurin, java-version: "17"}
       - run: sudo apt-get update && sudo apt-get install -y xvfb
       - uses: actions/download-artifact@v4
-        with:
-          name: tron-crop-builds
-      - uses: actions/download-artifact@v4
-        with:
-          name: tron-crop-static-evidence
-          path: static-evidence
-      - name: Install and byte-verify unchanged decks
+        with: {name: tron-crop-v2-builds}
+      - name: Install and byte-verify decks
+        run: python experimental/forge-ai/prepare_forge_decks.py --source battlebox/decks --destination "$HOME/.forge/decks/constructed"
+      - name: Run exactly two seed-95001 games and enforce hook gate
         run: |
-          python experimental/forge-ai/prepare_forge_decks.py \
-            --source battlebox/decks \
-            --destination "$HOME/.forge/decks/constructed"
-      - name: Run exactly 16 recovered/candidate matched games, fail fast
-        run: |
-          python experimental/forge-ai/tron-crop-candidate/run_phase4.py \
-            --recovered forge-recovered.jar \
-            --candidate forge-tron-candidate.jar \
-            --source-decks battlebox/decks \
-            --deck-dir "$HOME/.forge/decks/constructed" \
-            --output tron-crop-results \
-            --branch-sha "$GITHUB_SHA"
-      - name: Assemble complete Phase 4 artifact
-        if: always()
-        run: |
-          mkdir -p tron-crop-results/provenance
-          cp forge-three-build-sha256.txt tron-crop-results/provenance/
-          cp candidate-branch-sha.txt tron-crop-results/provenance/
-          cp pr7-source-head-sha.txt tron-crop-results/provenance/
-          cp validated-recovered-base-sha.txt tron-crop-results/provenance/
-          cp recovered-ai-pr2-sha.txt tron-crop-results/provenance/
-          cp recovered-blobs.txt tron-crop-results/provenance/
-          cp candidate-branch-diff-files.txt tron-crop-results/provenance/
-          cp tron-candidate-build/stock-computer-util-git-blob.txt tron-crop-results/provenance/ 2>/dev/null || true
-          cp tron-candidate-build/overlay/candidate-overlay.diff tron-crop-results/provenance/ 2>/dev/null || true
-          cp static-evidence/* tron-crop-results/provenance/ 2>/dev/null || true
-          cat > tron-crop-results/reproduction.md <<'EOF'
-          # Reproduction
-          Build exact recovered Forge 2.0.14 with `experimental/forge-ai/apply_forge_patches.sh`, then build the candidate using `experimental/forge-ai/tron-crop-candidate/build_candidate_jar.sh` and run `experimental/forge-ai/tron-crop-candidate/run_phase4.py` with the unchanged installed Battle Box decks. The harness contains the exact six run-#11 Tron conditions (seeds 95001-95006) and two non-Tron smoke conditions; each runs once on recovered control and once on candidate, for exactly 16 games.
-          EOF
-          git diff --exit-code origin/main...HEAD -- battlebox/decks > tron-crop-results/provenance/deck-diff-main.txt
-          python experimental/forge-ai/verify_recovered_blobs.py > tron-crop-results/provenance/recovered-blob-verification-final.txt
-      - name: Add gate report to workflow summary
-        if: always()
-        run: |
-          if [ -f tron-crop-results/gate-report.md ]; then cat tron-crop-results/gate-report.md >> "$GITHUB_STEP_SUMMARY"; fi
+          python experimental/forge-ai/tron-crop-candidate/run_phase4.py --mode gate1 \
+            --recovered forge-recovered-diagnostic.jar --candidate forge-tron-candidate.jar \
+            --source-decks battlebox/decks --deck-dir "$HOME/.forge/decks/constructed" \
+            --output gate1-results --branch-sha "$GITHUB_SHA"
       - uses: actions/upload-artifact@v4
         if: always()
-        with:
-          name: tron-crop-rotation-phase4
-          path: tron-crop-results/
-          retention-days: 90
+        with: {name: tron-crop-v2-gate1, path: gate1-results/, retention-days: 90}
+
+  gate2:
+    name: Gate 2 selector and real-path integration regressions
+    needs: gate1
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.11"}
+      - uses: actions/setup-java@v4
+        with: {distribution: temurin, java-version: "17"}
+      - uses: actions/download-artifact@v4
+        with: {name: tron-crop-v2-gate1, path: gate1-evidence}
+      - name: Repository and selector regressions
+        run: |
+          python -m unittest discover -s tests -v
+          mkdir -p candidate-java-tests
+          javac -d candidate-java-tests experimental/forge-ai/tron-crop-candidate/TronCropRotationSelection.java experimental/forge-ai/tron-crop-candidate/TronCropRotationSelectionTest.java
+          java -cp candidate-java-tests forge.ai.TronCropRotationSelectionTest | tee tron-selector-java-tests.txt
+      - name: Assert actual integration entry point and unrelated guard
+        run: |
+          grep -q '\[TRON_CROP_REALPATH\]' gate1-evidence/logs/candidate-tron-white-seed-95001.log
+          grep -q '\[TRON_CROP_DECISION\].*activated=true' gate1-evidence/logs/candidate-tron-white-seed-95001.log
+          grep -q 'chooseSacrificeType' experimental/forge-ai/tron-crop-candidate/apply_candidate_overlay.py
+          grep -q '"Crop Rotation".equals(ability.getHostCard().getName())' experimental/forge-ai/tron-crop-candidate/apply_candidate_overlay.py
+          grep -q 'ability.getApi() != ApiType.ChangeZone' experimental/forge-ai/tron-crop-candidate/apply_candidate_overlay.py
+          ! grep -q 'chooseTronCropRotationAssemblySacrifice' experimental/forge-ai/tron-crop-candidate/apply_candidate_overlay.py
+      - uses: actions/upload-artifact@v4
+        with: {name: tron-crop-v2-gate2, path: tron-selector-java-tests.txt, retention-days: 90}
+
+  gate3:
+    name: Gate 3 bounded matched validation (16 games)
+    needs: gate2
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: {fetch-depth: 0}
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.11"}
+      - uses: actions/setup-java@v4
+        with: {distribution: temurin, java-version: "17"}
+      - run: sudo apt-get update && sudo apt-get install -y xvfb
+      - uses: actions/download-artifact@v4
+        with: {name: tron-crop-v2-builds}
+      - uses: actions/download-artifact@v4
+        with: {name: tron-crop-v2-gate1, path: gate1-evidence}
+      - uses: actions/download-artifact@v4
+        with: {name: tron-crop-v2-gate2, path: gate2-evidence}
+      - name: Install and byte-verify unchanged decks
+        run: python experimental/forge-ai/prepare_forge_decks.py --source battlebox/decks --destination "$HOME/.forge/decks/constructed"
+      - name: Run exactly 16 matched Gate-3 games
+        run: |
+          python experimental/forge-ai/tron-crop-candidate/run_phase4.py --mode gate3 \
+            --recovered forge-recovered-diagnostic.jar --candidate forge-tron-candidate.jar \
+            --source-decks battlebox/decks --deck-dir "$HOME/.forge/decks/constructed" \
+            --output tron-crop-v2-results --branch-sha "$GITHUB_SHA"
+      - name: Assemble final evidence
+        if: always()
+        run: |
+          mkdir -p tron-crop-v2-results/provenance tron-crop-v2-results/gate1
+          cp -r gate1-evidence/* tron-crop-v2-results/gate1/ 2>/dev/null || true
+          cp forge-four-build-sha256.txt candidate-branch-sha.txt candidate-branch-diff-files.txt tron-crop-v2-results/provenance/
+          cp tron-v2-build/overlay/*.diff tron-crop-v2-results/provenance/ 2>/dev/null || true
+          cp gate2-evidence/* tron-crop-v2-results/provenance/ 2>/dev/null || true
+          git diff --exit-code origin/main...HEAD -- battlebox/decks > tron-crop-v2-results/provenance/deck-diff-main.txt
+          python experimental/forge-ai/verify_recovered_blobs.py > tron-crop-v2-results/provenance/recovered-blob-verification-final.txt
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with: {name: tron-crop-rotation-phase4-v2, path: tron-crop-v2-results/, retention-days: 90}
