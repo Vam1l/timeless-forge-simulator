@@ -63,6 +63,22 @@ class TronCropCandidateTests(unittest.TestCase):
         self.assertEqual(parsed["selected"], "Urza's Tower#13")
         self.assertEqual(parsed["classification"], "missing_distinct_piece")
 
+    def test_fetch_parser_accepts_preserved_gate1_initial_path_label(self):
+        line = (
+            "[TRON_CROP_FETCH] host=Crop Rotation hostId=31 api=ChangeZone "
+            "path=initial origin=[Library] destination=Battlefield "
+            "legalCandidates=[Forest#41, Urza's Tower#13, Urza's Mine#37, Urza's Power Plant#29] "
+            "controlledLands=[Urza's Mine#35] tronPresent=[Urza's Mine] "
+            "tronMissing=[Urza's Power Plant, Urza's Tower] "
+            "missingAvailable=[Urza's Power Plant, Urza's Tower] "
+            "selected=Urza's Tower#13 classification=missing_distinct_piece"
+        )
+        parsed = runner.parse_fetch_line(line)
+        self.assertEqual(parsed["path"], "initial")
+        self.assertEqual(parsed["selected"], "Urza's Tower#13")
+        self.assertEqual(parsed["classification"], "missing_distinct_piece")
+        self.assertIn("Urza's Mine#35", parsed["controlledLands"])
+
     def test_fetch_parser_accepts_fallback_land_path(self):
         line = (
             "[TRON_CROP_FETCH] host=Crop Rotation hostId=31 api=ChangeZone "
