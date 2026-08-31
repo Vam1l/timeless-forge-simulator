@@ -1,9 +1,8 @@
-name: Experimental Forge AI Repair Validation
+name: Hunting Storm Focused A/B
 
 on:
   pull_request:
-    branches:
-      - main
+    branches: [main]
   workflow_dispatch:
 
 permissions:
@@ -12,25 +11,11 @@ permissions:
 env:
   FORGE_VERSION: "2.0.14"
   JAVA_VERSION: "17"
+  RECOVERED_AI_SHA: "237300550e94586479bba9b1c6123af3e87cb179"
 
 jobs:
-  mode:
-    name: Resolve validation mode
-    runs-on: ubuntu-latest
-    outputs:
-      diagnostic_only: ${{ steps.mode.outputs.diagnostic_only }}
-    steps:
-      - uses: actions/checkout@v4
-      - id: mode
-        run: |
-          if [ -f experimental/forge-ai/HUNTING_DIAGNOSTIC_ONLY ]; then
-            echo 'diagnostic_only=true' >> "$GITHUB_OUTPUT"
-          else
-            echo 'diagnostic_only=false' >> "$GITHUB_OUTPUT"
-          fi
-
   static-audit:
-    name: Phase 2 - repository validation and static audit
+    name: Repository/static validation
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -43,6 +28,8 @@ jobs:
         with:
           distribution: temurin
           java-version: ${{ env.JAVA_VERSION }}
+      - run: test -f experimental/forge-ai/HUNTING_AB_ONLY
+      - run: test ! -f experimental/forge-ai/HUNTING_DIAGNOSTIC_ONLY
       - run: git fetch origin main:refs/remotes/origin/main
       - run: python -m unittest discover -s tests -v
       - run: python scripts/validate_battlebox.py
@@ -50,16 +37,14 @@ jobs:
       - name: Verify recovered Forge source blob integrity
         run: python experimental/forge-ai/verify_recovered_blobs.py
       - name: Check authored-file whitespace
-        run: |
-          # The recovered PR #2 Forge blobs intentionally retain their historical bytes,
-          # including pre-existing whitespace. All newly authored files remain checked.
-          git diff --check origin/main...HEAD -- . ':(exclude)experimental/forge-ai/forge-patches/**'
-      - run: git diff --exit-code origin/main...HEAD -- battlebox/decks
+        run: git diff --check origin/main...HEAD -- . ':(exclude)experimental/forge-ai/forge-patches/**'
+      - name: Verify decks unchanged
+        run: git diff --exit-code origin/main...HEAD -- battlebox/decks
       - run: python experimental/forge-ai/static_audit.py
 
   forge-build:
-    name: Phase 2 - compile recovered sources against Forge 2.0.14
-    needs: [static-audit, mode]
+    name: Compile exact stock and recovered Forge 2.0.14 builds
+    needs: static-audit
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -76,119 +61,31 @@ jobs:
           cp "forge-gui-desktop-${FORGE_VERSION}-jar-with-dependencies.jar" forge-stock.jar
           cp forge-stock.jar forge-patched.jar
           test -s forge-stock.jar
-      - name: Compile and install exact recovered PR #2 classes
+      - name: Compile exact recovered PR2 classes
         run: |
           PATCHED_JAR="$PWD/forge-patched.jar"
           cd experimental/forge-ai
           ./apply_forge_patches.sh "$PATCHED_JAR"
-      - name: Record build identities
+      - name: Record identities
         run: |
           sha256sum forge-stock.jar forge-patched.jar > forge-build-sha256.txt
-          git rev-parse HEAD > validation-branch-sha.txt
-          printf '%s\n' '237300550e94586479bba9b1c6123af3e87cb179' > pr2-final-sha.txt
+          git rev-parse HEAD > branch-sha.txt
+          printf '%s\n' "$RECOVERED_AI_SHA" > recovered-ai-sha.txt
       - uses: actions/upload-artifact@v4
         with:
-          name: forge-ai-validation-builds
+          name: hunting-focused-ab-builds
           path: |
             forge-stock.jar
             forge-patched.jar
             res/
             forge-build-sha256.txt
-            validation-branch-sha.txt
-            pr2-final-sha.txt
+            branch-sha.txt
+            recovered-ai-sha.txt
           retention-days: 7
 
-  scenarios:
-    name: Phase 3 - fixed-seed functional scenarios
-    needs: [forge-build, mode]
-    if: needs.mode.outputs.diagnostic_only != 'true'
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.11"
-      - uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: ${{ env.JAVA_VERSION }}
-      - run: sudo apt-get update && sudo apt-get install -y xvfb
-      - uses: actions/download-artifact@v4
-        with:
-          name: forge-ai-validation-builds
-      - name: Install and byte-verify unchanged battle-box decks for Forge
-        run: |
-          python experimental/forge-ai/prepare_forge_decks.py \
-            --source battlebox/decks \
-            --destination "$HOME/.forge/decks/constructed"
-      - name: Run actual Forge AI fixed-seed scenarios
-        run: |
-          python experimental/forge-ai/run_scenarios.py \
-            --jar forge-patched.jar \
-            --deck-dir "$HOME/.forge/decks/constructed" \
-            --output scenario-results
-      - uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: forge-ai-deterministic-scenarios
-          path: scenario-results/
-          retention-days: 90
-
-  focused-ab:
-    name: Phases 4-6 - matched-seed focused A/B (288 games max)
-    needs: [scenarios, mode]
-    if: needs.mode.outputs.diagnostic_only != 'true' && needs.scenarios.result == 'success'
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.11"
-      - uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: ${{ env.JAVA_VERSION }}
-      - run: sudo apt-get update && sudo apt-get install -y xvfb
-      - uses: actions/download-artifact@v4
-        with:
-          name: forge-ai-validation-builds
-      - uses: actions/download-artifact@v4
-        with:
-          name: forge-ai-deterministic-scenarios
-          path: scenario-results
-      - name: Install and byte-verify unchanged battle-box decks for Forge
-        run: |
-          python experimental/forge-ai/prepare_forge_decks.py \
-            --source battlebox/decks \
-            --destination "$HOME/.forge/decks/constructed"
-      - name: Run stock and patched builds with identical conditions and seeds
-        run: |
-          python experimental/forge-ai/run_ab.py \
-            --stock forge-stock.jar \
-            --patched forge-patched.jar \
-            --deck-dir "$HOME/.forge/decks/constructed" \
-            --output focused-ab-results
-      - name: Build concise gate report
-        if: always()
-        run: |
-          if [ -f focused-ab-results/exceptions-timeouts.json ] && [ -f scenario-results/scenarios.json ]; then
-            python experimental/forge-ai/build_report.py \
-              --scenarios scenario-results/scenarios.json \
-              --ab-dir focused-ab-results \
-              --output focused-ab-results/report.md
-            cat focused-ab-results/report.md >> "$GITHUB_STEP_SUMMARY"
-          fi
-      - uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: forge-ai-focused-ab-results
-          path: focused-ab-results/
-          retention-days: 90
-
-  hunting-diagnostic:
-    name: Hunting Storm telemetry diagnostic (30 games max)
-    needs: [forge-build, mode]
-    if: needs.mode.outputs.diagnostic_only == 'true'
+  hunting-focused-ab:
+    name: Hunting Storm matched-seed A/B (96 games)
+    needs: forge-build
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -204,66 +101,30 @@ jobs:
       - run: sudo apt-get update && sudo apt-get install -y xvfb
       - uses: actions/download-artifact@v4
         with:
-          name: forge-ai-validation-builds
-      - name: Install and byte-verify unchanged battle-box decks for Forge
+          name: hunting-focused-ab-builds
+      - name: Install and byte-verify unchanged battle-box decks
         run: |
           python experimental/forge-ai/prepare_forge_decks.py \
             --source battlebox/decks \
             --destination "$HOME/.forge/decks/constructed"
-      - name: Fetch exact Forge 2.0.14 AiController source
+      - name: Run 96-game Hunting-only matched-seed comparison
         run: |
-          mkdir -p hunting-diagnostic-build
-          curl --fail --location --retry 3 \
-            'https://raw.githubusercontent.com/Card-Forge/forge/forge-2.0.14/forge-ai/src/main/java/forge/ai/AiController.java' \
-            --output hunting-diagnostic-build/AiController.java
-          test "$(git hash-object --no-filters hunting-diagnostic-build/AiController.java)" = '2625df42e3f1d601770f869ba96361870c0e1921'
-      - name: Build telemetry-only diagnostic JAR overlay
-        run: |
-          python experimental/forge-ai/hunting-diagnostic/build_diagnostic_jar.py \
-            --base-jar forge-patched.jar \
-            --ai-controller hunting-diagnostic-build/AiController.java \
-            --token-ai experimental/forge-ai/forge-patches/forge/ai/ability/TokenAi.java \
-            --output-jar forge-hunting-diagnostic.jar \
-            --output-dir hunting-diagnostic-build
-          git rev-parse HEAD > hunting-diagnostic-build/diagnostic-commit-sha.txt
-          printf '%s\n' '237300550e94586479bba9b1c6123af3e87cb179' > hunting-diagnostic-build/recovered-ai-pr2-sha.txt
-      - name: Run bounded Hunting Storm vs Jund diagnostic
-        run: |
-          python experimental/forge-ai/hunting-diagnostic/run_hunting_diagnostic.py \
-            --jar forge-hunting-diagnostic.jar \
+          python experimental/forge-ai/hunting-focused-ab.py \
+            --stock forge-stock.jar \
+            --patched forge-patched.jar \
             --deck-dir "$HOME/.forge/decks/constructed" \
-            --output hunting-diagnostic-results \
-            --start-seed 74001
+            --output hunting-focused-ab-results \
+            --branch-sha "$GITHUB_SHA" \
+            --recovered-ai-sha "$RECOVERED_AI_SHA"
       - name: Add report summary
         if: always()
         run: |
-          if [ -f hunting-diagnostic-results/report.md ]; then
-            cat hunting-diagnostic-results/report.md >> "$GITHUB_STEP_SUMMARY"
+          if [ -f hunting-focused-ab-results/report.md ]; then
+            cat hunting-focused-ab-results/report.md >> "$GITHUB_STEP_SUMMARY"
           fi
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: forge-ai-hunting-storm-diagnostic
-          path: |
-            hunting-diagnostic-results/
-            hunting-diagnostic-build/telemetry-overlay.diff
-            hunting-diagnostic-build/jar-sha256.txt
-            hunting-diagnostic-build/diagnostic-commit-sha.txt
-            hunting-diagnostic-build/recovered-ai-pr2-sha.txt
+          name: hunting-storm-focused-ab-results
+          path: hunting-focused-ab-results/
           retention-days: 90
-
-  completion-note:
-    name: Validation stopping rule
-    if: always()
-    needs: [static-audit, forge-build, scenarios, focused-ab, hunting-diagnostic]
-    runs-on: ubuntu-latest
-    steps:
-      - name: State stopping rule
-        run: |
-          echo '# Experimental Forge AI validation stopping rule' >> "$GITHUB_STEP_SUMMARY"
-          echo '' >> "$GITHUB_STEP_SUMMARY"
-          echo 'This workflow never runs the 18,000-game baseline and never edits decks.' >> "$GITHUB_STEP_SUMMARY"
-          echo 'When HUNTING_DIAGNOSTIC_ONLY is present, the general three-deck scenario sweep and 288-game A/B stage are skipped.' >> "$GITHUB_STEP_SUMMARY"
-          echo 'The Hunting diagnostic is limited to Hunting Storm vs Jund, 30 games maximum, both orientations, 120 seconds/game, with early stop after three legally castable Hunting Pack opportunities.' >> "$GITHUB_STEP_SUMMARY"
-          echo '' >> "$GITHUB_STEP_SUMMARY"
-          echo 'No AI behavior is modified by the diagnostic overlay; any discovered failure is reported before repair.' >> "$GITHUB_STEP_SUMMARY"
