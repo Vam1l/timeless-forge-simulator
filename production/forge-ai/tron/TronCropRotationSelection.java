@@ -7,7 +7,14 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
-/** Narrow Crop Rotation protection while assembling Urza Tron. */
+/**
+ * Narrow candidate helper for Crop Rotation while assembling Urza Tron.
+ *
+ * This class is deliberately independent of deck name, seed, opponent, and card id.
+ * It only decides whether assembly protection applies and which sacrifice identities
+ * remain eligible. The caller still uses Forge's normal land valuation to choose a
+ * specific Card from the allowed identities.
+ */
 public final class TronCropRotationSelection {
     private static final List<String> TRON = Arrays.asList(
             "Urza's Mine", "Urza's Power Plant", "Urza's Tower");
@@ -30,13 +37,17 @@ public final class TronCropRotationSelection {
     }
 
     /**
-     * Null means use Forge's normal chooser. A non-null list limits legal sacrifice
-     * identities while another distinct Tron piece is both missing and available.
+     * Returns null when the assembly rule should not apply and Forge should use its
+     * ordinary sacrifice chooser. Returns a possibly-empty list when assembly
+     * protection does apply: non-Tron lands are preferred; otherwise duplicate Tron
+     * identities are eligible. An empty list means there is no safe assembly sacrifice
+     * and the caller must not sacrifice a unique Tron piece merely to refetch it.
      */
     public static List<String> allowedSacrificeNames(final List<String> sacrificeCandidateNames,
                                                      final Map<String, Integer> battlefieldCounts,
                                                      final Set<String> libraryLandNames) {
-        if (missingAvailablePieces(battlefieldCounts, libraryLandNames).isEmpty()) {
+        final Set<String> missingAvailable = missingAvailablePieces(battlefieldCounts, libraryLandNames);
+        if (missingAvailable.isEmpty()) {
             return null;
         }
 

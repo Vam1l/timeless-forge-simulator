@@ -1,0 +1,177 @@
+name: Production Tron AI Repair Validation
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'production/forge-ai/tron/**'
+      - 'tests/test_production_tron_ai.py'
+      - '.github/workflows/production-tron-ai-repair.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+env:
+  FORGE_VERSION: '2.0.14'
+  MAIN_BASE_SHA: 'ee667eb8b110cd985578eef2acc3e9c97db861c8'
+  VALIDATED_PR8_SHA: 'fd25362235521689e65b153998f8f58d016bd0b3'
+  VALIDATED_FINAL_ARTIFACT_ID: '9761801483'
+  VALIDATED_FINAL_SHA256: '47f31986dc905e132704349aa0aaa27011e537d5ae8d30d3584fbd2a5e536071'
+  VALIDATED_GATE2_ARTIFACT_ID: '9760035356'
+  VALIDATED_GATE2_SHA256: '0dbc83bcc3f3c3e8a484080499f2aac5b558118c11540f644caa20c00cf82121'
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: {fetch-depth: 0}
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.11'}
+      - uses: actions/setup-java@v4
+        with: {distribution: temurin, java-version: '17'}
+      - run: sudo apt-get update && sudo apt-get install -y xvfb
+
+      - name: Repository and production-scope gates
+        run: |
+          git fetch origin main:refs/remotes/origin/main
+          test "$(git merge-base origin/main HEAD)" = "$MAIN_BASE_SHA"
+          python -m unittest discover -s tests -v
+          python scripts/validate_battlebox.py
+          python -m compileall -q production tests scripts timeless_forge
+          git diff --check origin/main...HEAD
+          git diff --exit-code origin/main...HEAD -- battlebox/decks
+          changed="$(git diff --name-only origin/main...HEAD)"
+          echo "$changed" | tee changed-files.txt
+          while IFS= read -r p; do
+            case "$p" in
+              production/forge-ai/tron/*|tests/test_production_tron_ai.py|.github/workflows/production-tron-ai-repair.yml) ;;
+              *) echo "out-of-scope production file: $p"; exit 1;;
+            esac
+          done <<< "$changed"
+          ! find production/forge-ai/tron -type f \( -name '*.jar' -o -name '*.class' -o -name '*.zip' -o -name '*.log' -o -name '*.csv' -o -name '*.json' \) | grep .
+          ! grep -R -E 'Hunting Pack|Prismatic Strands|Supreme Verdict|Tinder Wall|TRON_CROP_REALPATH|TRON_CROP_FETCH' production/forge-ai/tron tests/test_production_tron_ai.py
+
+      - name: Fetch stock Forge 2.0.14 sources and distribution
+        run: |
+          curl --fail --location --retry 3 "https://github.com/Card-Forge/forge/releases/download/forge-${FORGE_VERSION}/forge-installer-${FORGE_VERSION}.tar.bz2" -o forge.tar.bz2
+          tar -xjf forge.tar.bz2
+          cp "forge-gui-desktop-${FORGE_VERSION}-jar-with-dependencies.jar" forge-stock.jar
+          mkdir -p forge-stock-src/forge/ai/ability
+          base='https://raw.githubusercontent.com/Card-Forge/forge/forge-2.0.14/forge-ai/src/main/java'
+          curl -fsSL "$base/forge/ai/ComputerUtil.java" -o forge-stock-src/forge/ai/ComputerUtil.java
+          curl -fsSL "$base/forge/ai/ComputerUtilCard.java" -o forge-stock-src/forge/ai/ComputerUtilCard.java
+          curl -fsSL "$base/forge/ai/ComputerUtilMana.java" -o forge-stock-src/forge/ai/ComputerUtilMana.java
+          curl -fsSL "$base/forge/ai/ability/PermanentAi.java" -o forge-stock-src/forge/ai/ability/PermanentAi.java
+          curl -fsSL "$base/forge/ai/ability/ChangeZoneAi.java" -o forge-stock-src/forge/ai/ability/ChangeZoneAi.java
+
+      - name: Build clean production candidate and focused Java regression
+        run: |
+          bash production/forge-ai/tron/build_tron_repair.sh forge-stock.jar forge-stock-src forge-tron-production.jar build/tron-production
+          mkdir -p build/selector-test
+          javac -d build/selector-test production/forge-ai/tron/TronCropRotationSelection.java production/forge-ai/tron/TronCropRotationSelectionTest.java
+          java -cp build/selector-test forge.ai.TronCropRotationSelectionTest | tee selector-test.txt
+          grep -q 'for (Object key : manaAbilityMap.keySet())' build/tron-production/src/forge/ai/ComputerUtilMana.java
+          grep -q '((Number) key).intValue()' build/tron-production/src/forge/ai/ComputerUtilMana.java
+          grep -q 'chooseSacrificeType' build/tron-production/src/forge/ai/ComputerUtil.java
+          grep -q '"Crop Rotation".equals(ability.getHostCard().getName())' build/tron-production/src/forge/ai/ComputerUtil.java
+          ! grep -q 'chooseTronCropRotationAssemblySacrifice' build/tron-production/src/forge/ai/ComputerUtil.java
+
+      - name: Verify PR8 validation artifacts and prepare validated sources
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          for spec in "$VALIDATED_FINAL_ARTIFACT_ID:$VALIDATED_FINAL_SHA256:validated-final.zip" "$VALIDATED_GATE2_ARTIFACT_ID:$VALIDATED_GATE2_SHA256:validated-gate2.zip"; do
+            IFS=: read -r id digest file <<< "$spec"
+            curl --fail --location --retry 3 -H "Authorization: Bearer $GH_TOKEN" -H 'Accept: application/vnd.github+json' "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${id}/zip" -o "$file"
+            echo "$digest  $file" | sha256sum -c -
+          done
+          mkdir -p validated validated/gate2
+          unzip -q validated-gate2.zip -d validated/gate2
+          raw="https://raw.githubusercontent.com/${GITHUB_REPOSITORY}/${VALIDATED_PR8_SHA}"
+          curl -fsSL "$raw/experimental/forge-ai/tron-crop-candidate/TronCropRotationSelection.java" -o validated/TronCropRotationSelection.java
+          curl -fsSL "$raw/experimental/forge-ai/tron-crop-candidate/apply_candidate_overlay.py" -o validated/apply_candidate_overlay.py
+          curl -fsSL "$raw/experimental/forge-ai/forge-patches/forge/ai/ComputerUtilCard.java" -o validated/ComputerUtilCard.java
+          curl -fsSL "$raw/experimental/forge-ai/forge-patches/forge/ai/ComputerUtilMana.java" -o validated/ComputerUtilMana.java
+          curl -fsSL "$raw/experimental/forge-ai/forge-patches/forge/ai/ability/PermanentAi.java" -o validated/PermanentAi.java
+          curl -fsSL "$raw/experimental/forge-ai/forge-patches/forge/ai/ability/ChangeZoneAi.java" -o validated/ChangeZoneAi.java
+          python validated/apply_candidate_overlay.py --input forge-stock-src/forge/ai/ComputerUtil.java --output validated/ComputerUtil.java --mode candidate
+
+      - name: Behavior-equivalence and class-entry verification
+        run: |
+          python production/forge-ai/tron/verify_equivalence.py --production-dir build/tron-production/src --validated-dir validated --stock-changezone forge-stock-src/forge/ai/ability/ChangeZoneAi.java --output behavior-equivalence.json
+          cmp production/forge-ai/tron/TronCropRotationSelection.java validated/TronCropRotationSelection.java
+          candidate_jar="$(find validated/gate2 -name 'forge-tron-candidate.jar' -print -quit)"
+          test -n "$candidate_jar"
+          mkdir -p build/javap-production build/javap-validated
+          for c in forge.ai.ComputerUtil forge.ai.ComputerUtilCard forge.ai.ComputerUtilMana forge.ai.ability.PermanentAi forge.ai.TronCropRotationSelection; do
+            javap -classpath forge-tron-production.jar -p "$c" > "build/javap-production/${c//./_}.txt"
+            javap -classpath "$candidate_jar" -p "$c" > "build/javap-validated/${c//./_}.txt"
+          done
+          for token in chooseSacrificeType; do grep -q "$token" build/javap-production/forge_ai_ComputerUtil.txt; grep -q "$token" build/javap-validated/forge_ai_ComputerUtil.txt; done
+          for token in getBestLandAI getWorstLand; do grep -q "$token" build/javap-production/forge_ai_ComputerUtilCard.txt; grep -q "$token" build/javap-validated/forge_ai_ComputerUtilCard.txt; done
+          grep -q checkPhaseRestrictions build/javap-production/forge_ai_ability_PermanentAi.txt
+          grep -q checkPhaseRestrictions build/javap-validated/forge_ai_ability_PermanentAi.txt
+
+      - name: Install and byte-verify unchanged decks
+        run: |
+          mkdir -p "$HOME/.forge/decks/constructed"
+          for src in battlebox/decks/*.dck; do
+            dst="$HOME/.forge/decks/constructed/$(basename "$src")"
+            cp "$src" "$dst"
+            cmp "$src" "$dst"
+          done
+
+      - name: One-game clean-build runtime preflight
+        run: |
+          set +e
+          timeout 150s xvfb-run -a java -jar forge-tron-production.jar sim -d 10-tron.dck 01-white-weenie.dck -D "$HOME/.forge/decks/constructed" -n 1 -c 120 -s 95001 > production-preflight.log 2>&1
+          rc=$?
+          set -e
+          test "$rc" -eq 0
+          grep -Eq 'Turn 1|Mulligan|Opening Hand|Game 1' production-preflight.log
+          grep -q 'Game Result:' production-preflight.log
+          ! grep -E 'ClassCastException|Byte.*Integer|Integer.*Byte|NullPointerException|ExecutionException|illegal action|illegal move|timed out|timeout' production-preflight.log
+          python - <<'PY'
+          import re
+          t=open('production-preflight.log').read()
+          for m in re.finditer(r"Zone Change: (Urza's (?:Mine|Tower|Power Plant)) \(\d+\) was put into Graveyard from Battlefield\.", t):
+              tail=t[m.end():m.end()+2500]
+              if 'cast Crop Rotation' not in tail[:1200]: continue
+              name=m.group(1)
+              after=tail.split('Resolve Stack: Crop Rotation',1)[-1]
+              if re.search(r'Mana: '+re.escape(name)+r' \(\d+\)', after[:1200]):
+                  raise SystemExit('same-piece Crop Rotation sequence observed in preflight')
+          PY
+
+      - name: Final cleanliness and report
+        run: |
+          git diff --check origin/main...HEAD
+          git diff --exit-code origin/main...HEAD -- battlebox/decks
+          sha256sum forge-stock.jar forge-tron-production.jar > production-build-sha256.txt
+          cat > production-validation.md <<EOF
+          # Production Tron AI repair validation
+          - Base: $MAIN_BASE_SHA
+          - Validated PR8 evidence: $VALIDATED_PR8_SHA / run 33402270316
+          - Deck diff: zero
+          - Clean candidate compiled from stock Forge 2.0.14 with only audited Tron closure.
+          - One runtime preflight: Tron vs White Weenie, seed 95001, parsed successfully.
+          - Hunting Storm and Esper behavior excluded; no deck rebalance.
+          EOF
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: production-tron-ai-repair-validation
+          path: |
+            changed-files.txt
+            selector-test.txt
+            behavior-equivalence.json
+            production-build-sha256.txt
+            production-preflight.log
+            production-validation.md
+            build/javap-production/
+            build/javap-validated/
+          retention-days: 90
