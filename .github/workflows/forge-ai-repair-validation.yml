@@ -1,4 +1,4 @@
-name: Hunting Storm Focused A/B
+name: Hunting Storm Decision Telemetry
 
 on:
   pull_request:
@@ -28,8 +28,8 @@ jobs:
         with:
           distribution: temurin
           java-version: ${{ env.JAVA_VERSION }}
-      - run: test -f experimental/forge-ai/HUNTING_AB_ONLY
-      - run: test ! -f experimental/forge-ai/HUNTING_DIAGNOSTIC_ONLY
+      - run: test -f experimental/forge-ai/HUNTING_DECISION_TELEMETRY_ONLY
+      - run: test ! -f experimental/forge-ai/HUNTING_AB_ONLY
       - run: git fetch origin main:refs/remotes/origin/main
       - run: python -m unittest discover -s tests -v
       - run: python scripts/validate_battlebox.py
@@ -43,7 +43,7 @@ jobs:
       - run: python experimental/forge-ai/static_audit.py
 
   forge-build:
-    name: Compile exact stock and recovered Forge 2.0.14 builds
+    name: Compile exact recovered Forge 2.0.14 build
     needs: static-audit
     runs-on: ubuntu-latest
     steps:
@@ -58,9 +58,7 @@ jobs:
             "https://github.com/Card-Forge/forge/releases/download/forge-${FORGE_VERSION}/forge-installer-${FORGE_VERSION}.tar.bz2" \
             --output forge.tar.bz2
           tar -xjf forge.tar.bz2
-          cp "forge-gui-desktop-${FORGE_VERSION}-jar-with-dependencies.jar" forge-stock.jar
-          cp forge-stock.jar forge-patched.jar
-          test -s forge-stock.jar
+          cp "forge-gui-desktop-${FORGE_VERSION}-jar-with-dependencies.jar" forge-patched.jar
       - name: Compile exact recovered PR2 classes
         run: |
           PATCHED_JAR="$PWD/forge-patched.jar"
@@ -68,14 +66,13 @@ jobs:
           ./apply_forge_patches.sh "$PATCHED_JAR"
       - name: Record identities
         run: |
-          sha256sum forge-stock.jar forge-patched.jar > forge-build-sha256.txt
+          sha256sum forge-patched.jar > forge-build-sha256.txt
           git rev-parse HEAD > branch-sha.txt
           printf '%s\n' "$RECOVERED_AI_SHA" > recovered-ai-sha.txt
       - uses: actions/upload-artifact@v4
         with:
-          name: hunting-focused-ab-builds
+          name: hunting-decision-telemetry-build
           path: |
-            forge-stock.jar
             forge-patched.jar
             res/
             forge-build-sha256.txt
@@ -83,8 +80,8 @@ jobs:
             recovered-ai-sha.txt
           retention-days: 7
 
-  hunting-focused-ab:
-    name: Hunting Storm matched-seed A/B (96 games)
+  decision-telemetry:
+    name: Hunting Storm patched-only decision telemetry (24 games max)
     needs: forge-build
     runs-on: ubuntu-latest
     steps:
@@ -101,30 +98,48 @@ jobs:
       - run: sudo apt-get update && sudo apt-get install -y xvfb
       - uses: actions/download-artifact@v4
         with:
-          name: hunting-focused-ab-builds
+          name: hunting-decision-telemetry-build
       - name: Install and byte-verify unchanged battle-box decks
         run: |
           python experimental/forge-ai/prepare_forge_decks.py \
             --source battlebox/decks \
             --destination "$HOME/.forge/decks/constructed"
-      - name: Run 96-game Hunting-only matched-seed comparison
+      - name: Fetch exact Forge 2.0.14 AiController source
         run: |
-          python experimental/forge-ai/hunting-focused-ab.py \
-            --stock forge-stock.jar \
-            --patched forge-patched.jar \
+          mkdir -p decision-telemetry-build
+          curl --fail --location --retry 3 \
+            'https://raw.githubusercontent.com/Card-Forge/forge/forge-2.0.14/forge-ai/src/main/java/forge/ai/AiController.java' \
+            --output decision-telemetry-build/AiController.java
+          test "$(git hash-object --no-filters decision-telemetry-build/AiController.java)" = '2625df42e3f1d601770f869ba96361870c0e1921'
+      - name: Build telemetry-only diagnostic JAR
+        run: |
+          python experimental/forge-ai/hunting-diagnostic/build_decision_telemetry_jar.py \
+            --base-jar forge-patched.jar \
+            --ai-controller decision-telemetry-build/AiController.java \
+            --token-ai experimental/forge-ai/forge-patches/forge/ai/ability/TokenAi.java \
+            --output-jar forge-hunting-decision-telemetry.jar \
+            --output-dir decision-telemetry-build
+          git rev-parse HEAD > decision-telemetry-build/diagnostic-branch-sha.txt
+          printf '%s\n' "$RECOVERED_AI_SHA" > decision-telemetry-build/recovered-ai-sha.txt
+      - name: Run bounded patched-only decision telemetry
+        run: |
+          python experimental/forge-ai/hunting-diagnostic/run_decision_telemetry.py \
+            --jar forge-hunting-decision-telemetry.jar \
             --deck-dir "$HOME/.forge/decks/constructed" \
-            --output hunting-focused-ab-results \
-            --branch-sha "$GITHUB_SHA" \
-            --recovered-ai-sha "$RECOVERED_AI_SHA"
+            --output decision-results \
+            --start-seed 93001
       - name: Add report summary
         if: always()
         run: |
-          if [ -f hunting-focused-ab-results/report.md ]; then
-            cat hunting-focused-ab-results/report.md >> "$GITHUB_STEP_SUMMARY"
-          fi
+          if [ -f decision-results/report.md ]; then cat decision-results/report.md >> "$GITHUB_STEP_SUMMARY"; fi
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: hunting-storm-focused-ab-results
-          path: hunting-focused-ab-results/
+          name: hunting-storm-decision-telemetry
+          path: |
+            decision-results/
+            decision-telemetry-build/telemetry-overlay.diff
+            decision-telemetry-build/jar-sha256.txt
+            decision-telemetry-build/diagnostic-branch-sha.txt
+            decision-telemetry-build/recovered-ai-sha.txt
           retention-days: 90
