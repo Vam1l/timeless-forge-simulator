@@ -128,7 +128,7 @@ jobs:
             --destination "$HOME/.forge/decks/constructed"
       - name: Run hard preflight plus exactly 52 bounded behavioral games
         run: |
-          python experimental/forge-ai/remaining-nine/run_validation.py \
+          python experimental/forge-ai/remaining-nine/run_validation_entry.py \
             --stock forge-stock.jar \
             --patched forge-patched.jar \
             --source-decks battlebox/decks \
