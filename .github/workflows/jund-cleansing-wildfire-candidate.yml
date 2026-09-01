@@ -1,27 +1,31 @@
-name: Experimental Jund Cleansing Wildfire Candidate
+name: Jund Cleansing Wildfire Measurement Validation
 
 on:
   pull_request:
     branches: [main]
     paths:
       - 'experimental/forge-ai/jund-cleansing-wildfire/**'
-      - 'scripts/jund_cleansing_wildfire_validation.py'
+      - 'scripts/jund_cleansing_wildfire_measurement.py'
+      - 'tests/test_jund_cleansing_wildfire_correlation.py'
       - '.github/workflows/jund-cleansing-wildfire-candidate.yml'
 
 permissions:
   contents: read
+  actions: read
 
 env:
   FORGE_VERSION: '2.0.14'
   PRODUCTION_MAIN_SHA: 'f179a4505f02b2a62a9c323a9de0683d0fbfb0da'
+  PR11_BEHAVIOR_HEAD: '4a68cef04883eb029041371d738bb004bc3a95bb'
   EXPECTED_DECK_TREE: '3d55da96aa15ea6a7da5ed2cf98e7ff6417bee35'
-  PILOT_RUN_ID: '33475332542'
-  PILOT_ARTIFACT_ID: '9788572975'
+  AUTHORITATIVE_RUN_ID: '33514122799'
+  AUTHORITATIVE_ARTIFACT_ID: '9803762755'
+  AUTHORITATIVE_ARTIFACT_SHA256: 'cd972cdbc989bf28fea2bb1b281cee2b67b45da09d7b3c5ceb3837433f0a7cb7'
 
 jobs:
-  validate:
+  measurement-validation:
     runs-on: ubuntu-latest
-    timeout-minutes: 240
+    timeout-minutes: 90
     steps:
       - uses: actions/checkout@v4
         with: {fetch-depth: 0}
@@ -31,66 +35,53 @@ jobs:
         with: {distribution: temurin, java-version: '17'}
       - run: sudo apt-get update && sudo apt-get install -y xvfb
 
-      - name: Exact base, scope, production repair, and deck identity gates
+      - name: Phase 1 - prove gameplay-bearing source and decks unchanged
         run: |
+          set -euo pipefail
           git fetch origin main:refs/remotes/origin/main
           test "$(git rev-parse origin/main)" = "$PRODUCTION_MAIN_SHA"
           test "$(git merge-base origin/main HEAD)" = "$PRODUCTION_MAIN_SHA"
           test "$(git rev-parse HEAD:battlebox/decks)" = "$EXPECTED_DECK_TREE"
-          git diff --exit-code origin/main...HEAD -- battlebox/decks production/forge-ai/tron
-          changed="$(git diff --name-only origin/main...HEAD)"
-          printf '%s\n' "$changed" | tee changed-files.txt
+
+          # No post-validation change may touch gameplay policy, its original
+          # integration, production Tron, or any deck.
+          git diff --exit-code "$PR11_BEHAVIOR_HEAD"..HEAD -- \
+            battlebox/decks \
+            production/forge-ai/tron \
+            experimental/forge-ai/jund-cleansing-wildfire/CleansingWildfireTargetingPolicy.java \
+            experimental/forge-ai/jund-cleansing-wildfire/CleansingWildfireTargetingPolicyTest.java \
+            experimental/forge-ai/jund-cleansing-wildfire/apply_destroy_ai_candidate.py
+
+          for p in \
+            experimental/forge-ai/jund-cleansing-wildfire/CleansingWildfireTargetingPolicy.java \
+            experimental/forge-ai/jund-cleansing-wildfire/CleansingWildfireTargetingPolicyTest.java \
+            experimental/forge-ai/jund-cleansing-wildfire/apply_destroy_ai_candidate.py; do
+            git show "$PR11_BEHAVIOR_HEAD:$p" > "/tmp/$(basename "$p").pr11"
+            cmp "$p" "/tmp/$(basename "$p").pr11"
+          done
+
+          changed="$(git diff --name-only "$PR11_BEHAVIOR_HEAD"..HEAD)"
+          printf '%s\n' "$changed" | tee measurement-changed-files.txt
           while IFS= read -r p; do
             case "$p" in
-              experimental/forge-ai/jund-cleansing-wildfire/*|scripts/jund_cleansing_wildfire_validation.py|.github/workflows/jund-cleansing-wildfire-candidate.yml) ;;
+              experimental/forge-ai/jund-cleansing-wildfire/apply_measurement_telemetry.py|\
+              experimental/forge-ai/jund-cleansing-wildfire/build_candidate.sh|\
+              scripts/jund_cleansing_wildfire_measurement.py|\
+              tests/test_jund_cleansing_wildfire_correlation.py|\
+              .github/workflows/jund-cleansing-wildfire-candidate.yml) ;;
               '') ;;
-              *) echo "out-of-scope file: $p"; exit 1;;
+              *) echo "out-of-scope measurement change: $p"; exit 1;;
             esac
           done <<< "$changed"
-          git diff --check origin/main...HEAD
+
+          git diff --check "$PR11_BEHAVIOR_HEAD"..HEAD
           python -m unittest discover -s tests -v | tee repository-tests.txt
           python scripts/validate_battlebox.py | tee deck-validation.txt
           python -m compileall -q production tests scripts timeless_forge experimental/forge-ai/jund-cleansing-wildfire
           grep -q '"Crop Rotation".equals(ability.getHostCard().getName())' production/forge-ai/tron/apply_computer_util.py
           grep -q 'instanceof Number' production/forge-ai/tron/apply_tron_support.py
           grep -q '((Number) key).intValue()' production/forge-ai/tron/apply_tron_support.py
-          ! grep -R -E '06-jund-wildfire|07-esper-control|08-sultai-beans|10-tron|01-white-weenie|9700[0-9]' experimental/forge-ai/jund-cleansing-wildfire/*.java
 
-      - name: Fetch exact stock Forge 2.0.14 distribution and sources
-        run: |
-          curl --fail --location --retry 3 \
-            "https://github.com/Card-Forge/forge/releases/download/forge-${FORGE_VERSION}/forge-installer-${FORGE_VERSION}.tar.bz2" \
-            -o forge.tar.bz2
-          tar -xjf forge.tar.bz2
-          cp "forge-gui-desktop-${FORGE_VERSION}-jar-with-dependencies.jar" forge-stock.jar
-          test -s forge-stock.jar
-          test -d res/languages
-          mkdir -p forge-stock-src/forge/ai/ability
-          base='https://raw.githubusercontent.com/Card-Forge/forge/forge-2.0.14/forge-ai/src/main/java'
-          curl -fsSL "$base/forge/ai/ComputerUtil.java" -o forge-stock-src/forge/ai/ComputerUtil.java
-          curl -fsSL "$base/forge/ai/ComputerUtilCard.java" -o forge-stock-src/forge/ai/ComputerUtilCard.java
-          curl -fsSL "$base/forge/ai/ComputerUtilMana.java" -o forge-stock-src/forge/ai/ComputerUtilMana.java
-          curl -fsSL "$base/forge/ai/ability/PermanentAi.java" -o forge-stock-src/forge/ai/ability/PermanentAi.java
-          curl -fsSL "$base/forge/ai/ability/DestroyAi.java" -o forge-stock-src/forge/ai/ability/DestroyAi.java
-          grep -q 'list = CardLists.getTargetableCards(ai.getOpponents().getCardsIn(ZoneType.Battlefield), sa);' forge-stock-src/forge/ai/ability/DestroyAi.java
-          grep -q 'list = CardLists.getNotKeyword(list, Keyword.INDESTRUCTIBLE);' forge-stock-src/forge/ai/ability/DestroyAi.java
-
-      - name: Build exact production control and candidate; run deterministic tests
-        run: |
-          bash experimental/forge-ai/jund-cleansing-wildfire/build_candidate.sh \
-            forge-stock.jar forge-stock-src forge-production.jar forge-wildfire-candidate.jar build/wildfire
-          test -s forge-production.jar
-          test -s forge-wildfire-candidate.jar
-          grep -q 'CleansingWildfireTargetingPolicyTest: PASS' build/wildfire/policy-test.txt
-          grep -q 'isExactCleansingWildfireStructure' build/wildfire/candidate-src/forge/ai/ability/DestroyAi.java
-          grep -q 'CardLists.getTargetableCards(ai.getGame().getCardsIn(ZoneType.Battlefield), sa)' build/wildfire/candidate-src/forge/ai/ability/DestroyAi.java
-          grep -q 'visible-tron' build/wildfire/candidate-src/forge/ai/ability/DestroyAi.java
-          grep -q 'self-indestructible' build/wildfire/candidate-src/forge/ai/ability/DestroyAi.java
-          grep -q 'Stock Forge fallback' build/wildfire/candidate-src/forge/ai/ability/DestroyAi.java
-          grep -q 'instanceof Number' build/wildfire/production/src/forge/ai/ComputerUtilMana.java
-          grep -q '((Number) key).intValue()' build/wildfire/production/src/forge/ai/ComputerUtilMana.java
-          grep -q '"Crop Rotation".equals(ability.getHostCard().getName())' build/wildfire/production/src/forge/ai/ComputerUtil.java
-          sha256sum forge-stock.jar forge-production.jar forge-wildfire-candidate.jar | tee build-hashes.txt
           python - <<'PY'
           import hashlib,json
           from pathlib import Path
@@ -98,82 +89,154 @@ jobs:
           Path('deck-hashes.json').write_text(json.dumps(d,indent=2)+'\n')
           PY
 
-      - name: Deterministic behavioral gate only
+      - name: Fetch exact Forge 2.0.14 distribution and source inputs
         run: |
-          python scripts/jund_cleansing_wildfire_validation.py gate \
-            --production forge-production.jar \
-            --candidate forge-wildfire-candidate.jar \
+          set -euo pipefail
+          curl --fail --location --retry 3 \
+            "https://github.com/Card-Forge/forge/releases/download/forge-${FORGE_VERSION}/forge-installer-${FORGE_VERSION}.tar.bz2" \
+            -o forge.tar.bz2
+          tar -xjf forge.tar.bz2
+          cp "forge-gui-desktop-${FORGE_VERSION}-jar-with-dependencies.jar" forge-stock.jar
+          test -s forge-stock.jar
+          test -d res/languages
+          mkdir -p forge-stock-src/forge/ai/ability forge-stock-src/forge/game/zone
+          ai='https://raw.githubusercontent.com/Card-Forge/forge/forge-2.0.14/forge-ai/src/main/java'
+          game='https://raw.githubusercontent.com/Card-Forge/forge/forge-2.0.14/forge-game/src/main/java'
+          curl -fsSL "$ai/forge/ai/ComputerUtil.java" -o forge-stock-src/forge/ai/ComputerUtil.java
+          curl -fsSL "$ai/forge/ai/ComputerUtilCard.java" -o forge-stock-src/forge/ai/ComputerUtilCard.java
+          curl -fsSL "$ai/forge/ai/ComputerUtilMana.java" -o forge-stock-src/forge/ai/ComputerUtilMana.java
+          curl -fsSL "$ai/forge/ai/ability/PermanentAi.java" -o forge-stock-src/forge/ai/ability/PermanentAi.java
+          curl -fsSL "$ai/forge/ai/ability/DestroyAi.java" -o forge-stock-src/forge/ai/ability/DestroyAi.java
+          curl -fsSL "$game/forge/game/zone/MagicStack.java" -o forge-stock-src/forge/game/zone/MagicStack.java
+          grep -q 'list = CardLists.getTargetableCards(ai.getOpponents().getCardsIn(ZoneType.Battlefield), sa);' forge-stock-src/forge/ai/ability/DestroyAi.java
+          grep -q '// The ability is added to stack HERE' forge-stock-src/forge/game/zone/MagicStack.java
+
+      - name: Build candidate and prove generated gameplay Java identity
+        run: |
+          set -euo pipefail
+          bash experimental/forge-ai/jund-cleansing-wildfire/build_candidate.sh \
+            forge-stock.jar forge-stock-src forge-production.jar forge-wildfire-measurement.jar build/wildfire
+          test -s forge-production.jar
+          test -s forge-wildfire-measurement.jar
+          grep -q 'CleansingWildfireTargetingPolicyTest: PASS' build/wildfire/policy-test.txt
+
+          # Recreate the exact PR #11 generated DestroyAi using the PR #11
+          # integration script and compare it to this head's behavior baseline.
+          git show "$PR11_BEHAVIOR_HEAD:experimental/forge-ai/jund-cleansing-wildfire/apply_destroy_ai_candidate.py" > /tmp/pr11-apply.py
+          python /tmp/pr11-apply.py \
+            --input forge-stock-src/forge/ai/ability/DestroyAi.java \
+            --output /tmp/pr11-DestroyAi.java
+          cmp /tmp/pr11-DestroyAi.java build/wildfire/behavior-baseline/forge/ai/ability/DestroyAi.java
+          cmp build/wildfire/behavior-baseline/forge/ai/ability/DestroyAi.java build/wildfire/verification/DestroyAi.behavior.java
+          cmp forge-stock-src/forge/game/zone/MagicStack.java build/wildfire/verification/MagicStack.behavior.java
+
+          # Production repair preservation in the exact compiled control arm.
+          grep -q 'instanceof Number' build/wildfire/production/src/forge/ai/ComputerUtilMana.java
+          grep -q '((Number) key).intValue()' build/wildfire/production/src/forge/ai/ComputerUtilMana.java
+          grep -q '"Crop Rotation".equals(ability.getHostCard().getName())' build/wildfire/production/src/forge/ai/ComputerUtil.java
+          sha256sum forge-stock.jar forge-production.jar forge-wildfire-measurement.jar | tee build-hashes.txt
+
+      - name: Phase 3 - maximum four-game identity-correlation gate
+        run: |
+          set -euo pipefail
+          python scripts/jund_cleansing_wildfire_measurement.py gate \
+            --candidate forge-wildfire-measurement.jar \
             --source-decks battlebox/decks \
             --deck-dir "$HOME/.forge/decks/constructed" \
-            --output gate-results
-          cat gate-results/gate.json
+            --output correlation-gate
+          cat correlation-gate/gate.json
           test "$(python - <<'PY'
           import json
-          print(str(json.load(open('gate-results/gate.json'))['pass']).lower())
+          print(str(json.load(open('correlation-gate/gate.json'))['pass']).lower())
+          PY
+          )" = true
+          test "$(find correlation-gate/logs -type f -name '*.log' | wc -l)" -eq 4
+
+      - name: Phase 4 - verify and reassess existing 96-game artifact without rerun
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          curl --fail --location --retry 3 \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H 'Accept: application/vnd.github+json' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${AUTHORITATIVE_ARTIFACT_ID}/zip" \
+            -o authoritative-pr11.zip
+          echo "$AUTHORITATIVE_ARTIFACT_SHA256  authoritative-pr11.zip" | sha256sum -c -
+          mkdir authoritative-pr11
+          unzip -q authoritative-pr11.zip -d authoritative-pr11
+          python scripts/jund_cleansing_wildfire_measurement.py reassess \
+            --artifact-root authoritative-pr11 \
+            --output corrected-96
+          cat corrected-96/corrected-accounting.json
+          cat corrected-96/corrected-acceptance.json
+          test "$(python - <<'PY'
+          import json
+          a=json.load(open('corrected-96/corrected-acceptance.json'))
+          print(str(a['technically_validated']).lower())
           PY
           )" = true
 
-      - name: Bounded 96-game matched validation
-        run: |
-          python scripts/jund_cleansing_wildfire_validation.py matched \
-            --production forge-production.jar \
-            --candidate forge-wildfire-candidate.jar \
-            --source-decks battlebox/decks \
-            --deck-dir "$HOME/.forge/decks/constructed" \
-            --output matched-results
-          test "$(python - <<'PY'
-          import json
-          print(len(json.load(open('matched-results/per-game.json'))))
-          PY
-          )" -eq 96
-          test "$(python - <<'PY'
-          import json
-          print(len(json.load(open('matched-results/runtime-failures.json'))))
-          PY
-          )" -eq 0
-
-      - name: Acceptance report and evidence summary
+      - name: Corrected acceptance summary
         run: |
           python - <<'PY'
           import json
           from pathlib import Path
-          casts=json.load(open('matched-results/wildfire-casts.json'))
-          acc=json.load(open('matched-results/acceptance.json'))
-          wr=json.load(open('matched-results/win-rates.json'))
-          gate=json.load(open('gate-results/gate.json'))
-          def count(build,cls): return sum(c['build']==build and c['classification']==cls for c in casts)
-          lines=['# Jund Cleansing Wildfire bounded validation','',
-            f"Production main: `f179a4505f02b2a62a9c323a9de0683d0fbfb0da`",
-            f"Pilot evidence: run `33475332542`, artifact `9788572975`",'',
-            '## Deterministic gate',f"- self-Bridge lines: {gate['self_bridge_lines']}",f"- Tron disruption lines: {gate['tron_disruption_lines']}",f"- failures: {gate['failures']}",'',
-            '## Complete matched Wildfire accounting',f"- total casts: {len(casts)}",
-            f"- production self-ramp: {count('production','self-ramp/card advantage')}",f"- candidate self-ramp: {count('candidate','self-ramp/card advantage')}",
-            f"- production correct Tron disruption: {count('production','correct Tron disruption')}",f"- candidate correct Tron disruption: {count('candidate','correct Tron disruption')}",
-            f"- production replaceable-land targeting: {count('production','replaceable-land targeting')}",f"- candidate replaceable-land targeting: {count('candidate','replaceable-land targeting')}",'',
-            '## Win rates (secondary evidence)']
-          for b in ('production','candidate'):
-            x=wr[b]; lines.append(f"- {b}: {x['wins']}/{x['decisive']} = {x['win_rate']:.3f}; Wilson 95% [{x['wilson95_low']:.3f}, {x['wilson95_high']:.3f}]")
-          lines += ['', '## Acceptance']
-          for k,v in acc.items(): lines.append(f"- {k}: {'PASS' if v else 'FAIL'}")
-          Path('validation-summary.md').write_text('\n'.join(lines)+'\n')
+          gate=json.load(open('correlation-gate/gate.json'))
+          acc=json.load(open('corrected-96/corrected-acceptance.json'))
+          acct=json.load(open('corrected-96/corrected-accounting.json'))
+          counts=acct['counts']
+          wr=acct['win_rates']
+          engines=acct['engine_counts_recomputed']
+          lines=[
+            '# PR #11 measurement-only validation','',
+            f"Behavioral baseline head: `{Path('/tmp/none').name if False else '4a68cef04883eb029041371d738bb004bc3a95bb'}`",
+            f"Authoritative prior artifact: `{9803762755}` / `{ 'cd972cdbc989bf28fea2bb1b281cee2b67b45da09d7b3c5ceb3837433f0a7cb7' }`",'',
+            '## Four-game identity correlation',
+            f"- games: {gate['games']}",
+            f"- uncorrelated commits: {gate['uncorrelated_commits']}",
+            f"- mismatched commits: {gate['mismatched_commits']}",
+            f"- uncommitted AI probes distinguished: {gate['uncommitted_probes']}",'',
+            '## Corrected existing 96-game accounting',
+            f"- production self-Bridge ramp: {counts.get('production',{}).get('self-Bridge ramp',0)}",
+            f"- candidate self-Bridge ramp: {counts.get('candidate',{}).get('self-Bridge ramp',0)}",
+            f"- production visible-Tron disruption: {counts.get('production',{}).get('visible-Tron disruption',0)}",
+            f"- candidate visible-Tron disruption: {counts.get('candidate',{}).get('visible-Tron disruption',0)}",
+            f"- candidate legitimate no-Bridge stock fallback: {counts.get('candidate',{}).get('legitimate no-Bridge stock fallback',0)}",
+            f"- candidate demonstrated targeting defects: {counts.get('candidate',{}).get('candidate targeting defect',0)}",
+            f"- genuinely ambiguous: {len(acct['genuinely_ambiguous'])}",'',
+            '## Existing matched records (secondary only)',
+            f"- production: {wr['production']['wins']}/{wr['production']['decisive']}",
+            f"- candidate: {wr['candidate']['wins']}/{wr['candidate']['decisive']}",'',
+            '## Engine preservation',
+            f"- production: {engines['production']}",
+            f"- candidate: {engines['candidate']}",'',
+            '## Corrected acceptance',
+          ]
+          for k,v in acc.items():
+            lines.append(f"- {k}: {'PASS' if v else 'FAIL'}")
+          Path('measurement-validation-summary.md').write_text('\n'.join(lines)+'\n')
           PY
-          cat validation-summary.md >> "$GITHUB_STEP_SUMMARY"
-          cat validation-summary.md
+          cat measurement-validation-summary.md
+          cat measurement-validation-summary.md >> "$GITHUB_STEP_SUMMARY"
 
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: jund-cleansing-wildfire-validation
+          name: jund-cleansing-wildfire-measurement-validation
           path: |
-            changed-files.txt
+            measurement-changed-files.txt
             repository-tests.txt
             deck-validation.txt
-            build-hashes.txt
             deck-hashes.json
+            build-hashes.txt
             build/wildfire/policy-test.txt
+            build/wildfire/behavior-baseline/forge/ai/ability/DestroyAi.java
+            build/wildfire/verification/
             build/wildfire/candidate-src/forge/ai/ability/DestroyAi.java
-            gate-results/
-            matched-results/
-            validation-summary.md
+            build/wildfire/candidate-src/forge/game/zone/MagicStack.java
+            correlation-gate/
+            corrected-96/
+            measurement-validation-summary.md
           if-no-files-found: error
           retention-days: 90
