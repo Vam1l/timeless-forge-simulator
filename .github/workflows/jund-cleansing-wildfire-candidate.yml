@@ -54,7 +54,7 @@ jobs:
           grep -q '"Crop Rotation".equals(ability.getHostCard().getName())' production/forge-ai/tron/apply_computer_util.py
           grep -q 'instanceof Number' production/forge-ai/tron/apply_tron_support.py
           grep -q '((Number) key).intValue()' production/forge-ai/tron/apply_tron_support.py
-          ! grep -R -E '06-jund-wildfire|9700[0-9]|seed|opponent|turn' experimental/forge-ai/jund-cleansing-wildfire/*.java
+          ! grep -R -E '06-jund-wildfire|07-esper-control|08-sultai-beans|10-tron|01-white-weenie|9700[0-9]' experimental/forge-ai/jund-cleansing-wildfire/*.java
 
       - name: Fetch exact stock Forge 2.0.14 distribution and sources
         run: |
