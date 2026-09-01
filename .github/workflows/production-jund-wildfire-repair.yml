@@ -1,0 +1,219 @@
+name: Production Cleansing Wildfire Repair Validation
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'production/forge-ai/cleansing-wildfire/**'
+      - 'tests/test_production_cleansing_wildfire.py'
+      - 'scripts/verify_cleansing_wildfire_equivalence.py'
+      - '.github/workflows/production-jund-wildfire-repair.yml'
+
+permissions:
+  contents: read
+
+env:
+  FORGE_VERSION: '2.0.14'
+  PRODUCTION_MAIN_SHA: 'f179a4505f02b2a62a9c323a9de0683d0fbfb0da'
+  VALIDATED_GAMEPLAY_BASELINE: '4a68cef04883eb029041371d738bb004bc3a95bb'
+  EXPECTED_DECK_TREE: '3d55da96aa15ea6a7da5ed2cf98e7ff6417bee35'
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.sha }}
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.11'}
+      - uses: actions/setup-java@v4
+        with: {distribution: temurin, java-version: '17'}
+      - run: sudo apt-get update && sudo apt-get install -y xvfb
+
+      - name: Static scope, source, tests, decks, and production Tron gates
+        run: |
+          set -euo pipefail
+          git fetch origin main:refs/remotes/origin/main
+          test "$(git rev-parse origin/main)" = "$PRODUCTION_MAIN_SHA"
+          test "$(git merge-base origin/main HEAD)" = "$PRODUCTION_MAIN_SHA"
+          test "$(git rev-parse HEAD:battlebox/decks)" = "$EXPECTED_DECK_TREE"
+          git diff --exit-code "$PRODUCTION_MAIN_SHA"..HEAD -- battlebox/decks production/forge-ai/tron
+          changed="$(git diff --name-only "$PRODUCTION_MAIN_SHA"..HEAD)"
+          printf '%s\n' "$changed" | tee changed-files.txt
+          while IFS= read -r p; do
+            case "$p" in
+              production/forge-ai/cleansing-wildfire/*|tests/test_production_cleansing_wildfire.py|scripts/verify_cleansing_wildfire_equivalence.py|.github/workflows/production-jund-wildfire-repair.yml) ;;
+              '') ;;
+              *) echo "out-of-scope production change: $p"; exit 1;;
+            esac
+          done <<< "$changed"
+          git diff --check "$PRODUCTION_MAIN_SHA"..HEAD
+          python -m compileall -q production tests scripts timeless_forge
+          python -m unittest discover -s tests -v | tee repository-tests.txt
+          python scripts/validate_battlebox.py | tee deck-validation.txt
+          ! grep -R -E 'CWAI|CWMEASURE|System\.identityHashCode|MagicStack|9700[0-9]|06-jund-wildfire|07-esper-control|08-sultai-beans|10-tron|Hunting Storm|Supreme Verdict' production/forge-ai/cleansing-wildfire/*.java production/forge-ai/cleansing-wildfire/*.py production/forge-ai/cleansing-wildfire/*.sh
+          grep -q '"Crop Rotation".equals(ability.getHostCard().getName())' production/forge-ai/tron/apply_computer_util.py
+          grep -q 'instanceof Number' production/forge-ai/tron/apply_tron_support.py
+          grep -q '((Number) key).intValue()' production/forge-ai/tron/apply_tron_support.py
+          python - <<'PY'
+          import hashlib,json
+          from pathlib import Path
+          d={p.name:hashlib.sha256(p.read_bytes()).hexdigest() for p in sorted(Path('battlebox/decks').glob('*.dck'))}
+          Path('deck-hashes.json').write_text(json.dumps(d,indent=2)+'\n')
+          PY
+
+      - name: Fetch exact Forge 2.0.14 distribution and source inputs
+        run: |
+          set -euo pipefail
+          curl --fail --location --retry 3 "https://github.com/Card-Forge/forge/releases/download/forge-${FORGE_VERSION}/forge-installer-${FORGE_VERSION}.tar.bz2" -o forge.tar.bz2
+          tar -xjf forge.tar.bz2
+          cp "forge-gui-desktop-${FORGE_VERSION}-jar-with-dependencies.jar" forge-stock.jar
+          test -s forge-stock.jar
+          test -d res/languages
+          mkdir -p forge-stock-src/forge/ai/ability
+          base='https://raw.githubusercontent.com/Card-Forge/forge/forge-2.0.14/forge-ai/src/main/java'
+          curl -fsSL "$base/forge/ai/ComputerUtil.java" -o forge-stock-src/forge/ai/ComputerUtil.java
+          curl -fsSL "$base/forge/ai/ComputerUtilCard.java" -o forge-stock-src/forge/ai/ComputerUtilCard.java
+          curl -fsSL "$base/forge/ai/ComputerUtilMana.java" -o forge-stock-src/forge/ai/ComputerUtilMana.java
+          curl -fsSL "$base/forge/ai/ability/PermanentAi.java" -o forge-stock-src/forge/ai/ability/PermanentAi.java
+          curl -fsSL "$base/forge/ai/ability/DestroyAi.java" -o forge-stock-src/forge/ai/ability/DestroyAi.java
+          grep -q 'list = CardLists.getTargetableCards(ai.getOpponents().getCardsIn(ZoneType.Battlefield), sa);' forge-stock-src/forge/ai/ability/DestroyAi.java
+
+      - name: Build clean production repair and deterministic Java tests
+        run: |
+          set -euo pipefail
+          bash production/forge-ai/cleansing-wildfire/build_wildfire_repair.sh forge-stock.jar forge-stock-src forge-production-wildfire.jar build/wildfire-production
+          test -s forge-production-wildfire.jar
+          grep -q 'CleansingWildfireTargetingPolicyTest: PASS' build/wildfire-production/policy-test.txt
+          grep -q 'instanceof Number' build/wildfire-production/tron/src/forge/ai/ComputerUtilMana.java
+          grep -q '((Number) key).intValue()' build/wildfire-production/tron/src/forge/ai/ComputerUtilMana.java
+          grep -q '"Crop Rotation".equals(ability.getHostCard().getName())' build/wildfire-production/tron/src/forge/ai/ComputerUtil.java
+          sha256sum forge-stock.jar forge-production-wildfire.jar | tee build-hashes.txt
+
+      - name: Validated-baseline source and compiled equivalence
+        run: |
+          set -euo pipefail
+          mkdir -p validated-baseline validated-classes production-classes
+          git show "$VALIDATED_GAMEPLAY_BASELINE:experimental/forge-ai/jund-cleansing-wildfire/CleansingWildfireTargetingPolicy.java" > validated-baseline/CleansingWildfireTargetingPolicy.java
+          git show "$VALIDATED_GAMEPLAY_BASELINE:experimental/forge-ai/jund-cleansing-wildfire/apply_destroy_ai_candidate.py" > validated-baseline/apply_destroy_ai_candidate.py
+          cmp validated-baseline/CleansingWildfireTargetingPolicy.java production/forge-ai/cleansing-wildfire/CleansingWildfireTargetingPolicy.java
+          python validated-baseline/apply_destroy_ai_candidate.py --input forge-stock-src/forge/ai/ability/DestroyAi.java --output validated-baseline/DestroyAi.java
+          javac -d validated-classes validated-baseline/CleansingWildfireTargetingPolicy.java
+          javac -d production-classes production/forge-ai/cleansing-wildfire/CleansingWildfireTargetingPolicy.java
+          python scripts/verify_cleansing_wildfire_equivalence.py --validated-policy validated-baseline/CleansingWildfireTargetingPolicy.java --production-policy production/forge-ai/cleansing-wildfire/CleansingWildfireTargetingPolicy.java --validated-policy-class validated-classes/forge/ai/ability/CleansingWildfireTargetingPolicy.class --production-policy-class production-classes/forge/ai/ability/CleansingWildfireTargetingPolicy.class --validated-decision-class 'validated-classes/forge/ai/ability/CleansingWildfireTargetingPolicy$Decision.class' --production-decision-class 'production-classes/forge/ai/ability/CleansingWildfireTargetingPolicy$Decision.class' --validated-destroy validated-baseline/DestroyAi.java --production-destroy build/wildfire-production/wildfire-src/forge/ai/ability/DestroyAi.java --output equivalence-report.json
+          cat equivalence-report.json
+          test "$(python - <<'PY'
+          import json
+          print(str(json.load(open('equivalence-report.json'))['pass']).lower())
+          PY
+          )" = true
+
+      - name: Install byte-identical decks for preflight
+        run: |
+          set -euo pipefail
+          mkdir -p "$HOME/.forge/decks/constructed"
+          cp battlebox/decks/*.dck "$HOME/.forge/decks/constructed/"
+          python - <<'PY'
+          from pathlib import Path
+          src=Path('battlebox/decks'); dst=Path.home()/'.forge/decks/constructed'
+          for p in src.glob('*.dck'):
+              q=dst/p.name
+              if p.read_bytes()!=q.read_bytes(): raise SystemExit('deck byte mismatch: '+p.name)
+          PY
+
+      - name: Exactly two clean-production runtime preflight games
+        run: |
+          set -euo pipefail
+          mkdir -p preflight/logs
+          xvfb-run -a java -jar "$(pwd)/forge-production-wildfire.jar" sim -d 06-jund-wildfire.dck 07-esper-control.dck -D "$HOME/.forge/decks/constructed" -n 1 -c 120 -s 97004 > preflight/logs/jund-vs-esper-seed-97004.log 2>&1
+          xvfb-run -a java -jar "$(pwd)/forge-production-wildfire.jar" sim -d 06-jund-wildfire.dck 10-tron.dck -D "$HOME/.forge/decks/constructed" -n 1 -c 120 -s 97001 > preflight/logs/jund-vs-tron-seed-97001.log 2>&1
+          python - <<'PY'
+          import json,re
+          from pathlib import Path
+          BRIDGES={'Drossforge Bridge','Slagwoods Bridge'}
+          URZA={"Urza's Mine","Urza's Power Plant","Urza's Tower"}
+          TURN=re.compile(r'Turn: Turn (\d+) \((.+?)\)'); PHASE=re.compile(r'Phase: (.+)')
+          LAND=re.compile(r'Land: (Ai\(\d+\)-.+?) played (.+?) \((\d+)\)')
+          ZONE=re.compile(r'Zone Change: (.+?) \((\d+)\) was put into (\w+) from (\w+)')
+          CAST=re.compile(r'Add To Stack: (Ai\(\d+\)-.+?) cast Cleansing Wildfire targeting \[(.+?) \((\d+)\)\]')
+          RESULT=re.compile(r'Game Result:\s*Game\s+\d+\s+ended in\s+\d+\s+ms\.\s*(.+?)\s+has won!',re.I)
+          FATAL=re.compile(r'ClassCastException|NullPointerException|ExecutionException|AssertionError|java\.lang\.\w*(?:Exception|Error)|Byte.*Integer|Integer.*Byte|illegal action|illegal move|cannot legally|not a legal|SUBPROCESS_TIMEOUT|timed out',re.I)
+          specs=[('Esper','preflight/logs/jund-vs-esper-seed-97004.log'),('Tron','preflight/logs/jund-vs-tron-seed-97001.log')]
+          all_rows=[]; games=[]
+          for opponent,path in specs:
+              text=Path(path).read_text(errors='replace')
+              if FATAL.search(text): raise SystemExit('runtime failure marker in '+path)
+              if not RESULT.search(text): raise SystemExit('unparsed result in '+path)
+              turn=None; phase=None; bridges={}; urza={}; rows=[]
+              for line in text.splitlines():
+                  m=TURN.match(line)
+                  if m: turn=int(m.group(1))
+                  m=PHASE.match(line)
+                  if m: phase=m.group(1)
+                  m=LAND.match(line)
+                  if m:
+                      ctrl,name,cid=m.groups()
+                      if 'Jund Wildfire' in ctrl and name in BRIDGES: bridges[cid]=name
+                      elif 'Jund Wildfire' not in ctrl and name in URZA: urza[cid]=name
+                  m=ZONE.match(line)
+                  if m:
+                      name,cid,dest,origin=m.groups()
+                      if origin=='Battlefield': bridges.pop(cid,None); urza.pop(cid,None)
+                      if dest=='Battlefield' and opponent=='Tron' and name in URZA: urza[cid]=name
+                  m=CAST.search(line)
+                  if not (m and 'Jund Wildfire' in m.group(1)): continue
+                  target_name,target_id=m.group(2),m.group(3)
+                  own=[{'id':i,'name':n} for i,n in sorted(bridges.items())]; types=sorted(set(urza.values()))
+                  if len(types)>=2: expected='visible-Tron disruption'; ok=target_name in URZA
+                  elif own: expected='self-Bridge ramp'; ok=target_id in bridges
+                  else: expected='stock fallback'; ok=True
+                  row={'opponent':opponent,'turn':turn,'phase':phase,'visible_own_indestructible':own,'visible_opposing_urza_types':types,'target':{'id':target_id,'name':target_name},'classification':expected,'matches_validated_rule':ok}
+                  rows.append(row); all_rows.append(row)
+                  if not ok: raise SystemExit('target behavior inconsistent with validated policy: '+json.dumps(row))
+              games.append({'opponent':opponent,'log':path,'casts':rows,'result_parsed':True})
+          if not any(r['classification']=='stock fallback' for r in all_rows if r['opponent']=='Esper'): raise SystemExit('Esper preflight did not demonstrate legitimate no-Bridge fallback')
+          if not any(r['classification']=='visible-Tron disruption' for r in all_rows if r['opponent']=='Tron'): raise SystemExit('Tron preflight did not demonstrate distinct-piece disruption')
+          out={'games_executed':2,'games':games,'wildfire_casts':all_rows,'runtime_failures':0,'pass':True}
+          Path('preflight/preflight-accounting.json').write_text(json.dumps(out,indent=2)+'\n')
+          lines=['# Clean production two-game preflight','', '| Opponent | Turn | Phase | Own indestructible | Opposing Urza types | Actual target | Classification | Rule |','|---|---:|---|---|---|---|---|---|']
+          for r in all_rows:
+              own=', '.join(f"{x['name']} ({x['id']})" for x in r['visible_own_indestructible']) or 'none'; ut=', '.join(r['visible_opposing_urza_types']) or 'none'; t=f"{r['target']['name']} ({r['target']['id']})"
+              lines.append(f"| {r['opponent']} | {r['turn']} | {r['phase']} | {own} | {ut} | {t} | {r['classification']} | {'PASS' if r['matches_validated_rule'] else 'FAIL'} |")
+          Path('preflight/preflight-accounting.md').write_text('\n'.join(lines)+'\n')
+          PY
+          cat preflight/preflight-accounting.md
+
+      - name: Production acceptance report
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import hashlib,json
+          from pathlib import Path
+          eq=json.load(open('equivalence-report.json')); pf=json.load(open('preflight/preflight-accounting.json'))
+          report={'production_main':'f179a4505f02b2a62a9c323a9de0683d0fbfb0da','validated_gameplay_baseline':'4a68cef04883eb029041371d738bb004bc3a95bb','scope_minimal':True,'gameplay_equivalence':eq['pass'],'telemetry_absent':eq['telemetry_and_measurement_absent'],'production_tron_preserved':True,'decks_unchanged':True,'preflight_games':pf['games_executed'],'preflight_runtime_failures':pf['runtime_failures'],'preflight_rule_pass':pf['pass'],'technically_ready_for_merge_decision':bool(eq['pass'] and pf['pass'] and pf['games_executed']==2)}
+          Path('production-acceptance.json').write_text(json.dumps(report,indent=2)+'\n')
+          Path('source-hashes.json').write_text(json.dumps({str(p):hashlib.sha256(p.read_bytes()).hexdigest() for p in [Path('production/forge-ai/cleansing-wildfire/CleansingWildfireTargetingPolicy.java'),Path('production/forge-ai/cleansing-wildfire/CleansingWildfireTargetingPolicyTest.java'),Path('production/forge-ai/cleansing-wildfire/apply_destroy_ai.py'),Path('production/forge-ai/cleansing-wildfire/build_wildfire_repair.sh'),Path('scripts/verify_cleansing_wildfire_equivalence.py'),Path('tests/test_production_cleansing_wildfire.py')]},indent=2)+'\n')
+          PY
+          cat production-acceptance.json
+          cat preflight/preflight-accounting.md >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: production-cleansing-wildfire-validation
+          path: |
+            changed-files.txt
+            repository-tests.txt
+            deck-validation.txt
+            deck-hashes.json
+            build-hashes.txt
+            source-hashes.json
+            equivalence-report.json
+            production-acceptance.json
+            build/wildfire-production/policy-test.txt
+            preflight/
+          if-no-files-found: error
+          retention-days: 90
