@@ -65,7 +65,28 @@ def card(s):
     return between(s,'    public static Card getWorstLand(final List<Card> lands) {','    public static Card getBestLandToAnimate(',worst,'getWorstLand')
 
 def mana(s):
-    return one(s,'            for (Number colorint : manaAbilityMap.keySet()) {\n                int colorVal = colorint.intValue();\n','            for (Object key : manaAbilityMap.keySet()) {\n                if (!(key instanceof Number)) continue;\n                int colorVal = ((Number) key).intValue();\n','numeric-map')
+    old='''            for (Integer colorint : manaAbilityMap.keySet()) {
+                // apply mana color change matrix here
+                if (ai.getManaPool().canPayForShardWithColor(shard, colorint.byteValue())) {
+                    for (SpellAbility sa : manaAbilityMap.get(colorint)) {
+                        if (!res.get(shard).contains(sa)) {
+                            res.put(shard, sa);
+                        }
+                    }
+                }
+            }
+'''
+    new='''            for (Object key : manaAbilityMap.keySet()) {
+                if (!(key instanceof Number)) continue;
+                int colorVal = ((Number) key).intValue();
+                if (!ai.getManaPool().canPayForShardWithColor(shard, (byte)colorVal)) continue;
+                for (SpellAbility sa : manaAbilityMap.get(colorVal)) {
+                    if (res.get(shard).contains(sa)) continue;
+                    res.put(shard, sa);
+                }
+            }
+'''
+    return one(s,old,new,'numeric-map')
 
 def permanent(s):
     old='''        // Wait for Main2 if possible
