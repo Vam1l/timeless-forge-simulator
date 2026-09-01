@@ -1,0 +1,215 @@
+name: Production Cleansing Wildfire Artifact Continuation
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'scripts/production_cleansing_wildfire_chronology.py'
+      - 'tests/test_production_cleansing_wildfire_chronology.py'
+      - '.github/workflows/production-jund-wildfire-repair.yml'
+
+permissions:
+  contents: read
+  actions: read
+
+env:
+  PRODUCTION_MAIN_SHA: 'f179a4505f02b2a62a9c323a9de0683d0fbfb0da'
+  PRODUCTION_BEHAVIOR_HEAD: 'ee926843353f0ecefd5da66f67c009fecd5c9f48'
+  PRESERVED_ARTIFACT_ID: '9816707041'
+  PRESERVED_ARTIFACT_SHA256: '13c54ab74d42ab65057ab94a01db6c6bf91d8f23155f42f34e901e2e88421e9f'
+  EXPECTED_PRODUCTION_JAR_SHA256: '87cde76991505aa76a029dd353904d67cbe820d3c79a5fca6af948dcb321ad3b'
+  EXPECTED_DECK_TREE: '3d55da96aa15ea6a7da5ed2cf98e7ff6417bee35'
+
+jobs:
+  artifact-continuation:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.sha }}
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.11'}
+
+      - name: Validation-only scope and behavioral-source identity
+        run: |
+          set -euo pipefail
+          git fetch origin main:refs/remotes/origin/main
+          test "$(git rev-parse origin/main)" = "$PRODUCTION_MAIN_SHA"
+          test "$(git merge-base origin/main HEAD)" = "$PRODUCTION_MAIN_SHA"
+          test "$(git rev-parse HEAD:battlebox/decks)" = "$EXPECTED_DECK_TREE"
+
+          # No gameplay-bearing source may differ from the already built production head.
+          git diff --exit-code "$PRODUCTION_BEHAVIOR_HEAD"..HEAD -- \
+            production/forge-ai/cleansing-wildfire/CleansingWildfireTargetingPolicy.java \
+            production/forge-ai/cleansing-wildfire/CleansingWildfireTargetingPolicyTest.java \
+            production/forge-ai/cleansing-wildfire/apply_destroy_ai.py \
+            production/forge-ai/cleansing-wildfire/build_wildfire_repair.sh \
+            production/forge-ai/tron \
+            battlebox/decks
+
+          changed="$(git diff --name-only "$PRODUCTION_BEHAVIOR_HEAD"..HEAD)"
+          printf '%s\n' "$changed" | tee continuation-changed-files.txt
+          while IFS= read -r p; do
+            case "$p" in
+              scripts/production_cleansing_wildfire_chronology.py|\
+              tests/test_production_cleansing_wildfire_chronology.py|\
+              .github/workflows/production-jund-wildfire-repair.yml) ;;
+              '') ;;
+              *) echo "out-of-scope continuation change: $p"; exit 1;;
+            esac
+          done <<< "$changed"
+
+          git diff --check "$PRODUCTION_BEHAVIOR_HEAD"..HEAD
+          python -m py_compile scripts/production_cleansing_wildfire_chronology.py tests/test_production_cleansing_wildfire_chronology.py
+          python -c 'import scripts.production_cleansing_wildfire_chronology'
+          python -m unittest tests.test_production_cleansing_wildfire_chronology -v | tee chronology-tests.txt
+          python -m unittest discover -s tests -v | tee repository-tests.txt
+
+          python - <<'PY'
+          import hashlib,json,subprocess
+          from pathlib import Path
+          paths=[
+            'production/forge-ai/cleansing-wildfire/CleansingWildfireTargetingPolicy.java',
+            'production/forge-ai/cleansing-wildfire/CleansingWildfireTargetingPolicyTest.java',
+            'production/forge-ai/cleansing-wildfire/apply_destroy_ai.py',
+            'production/forge-ai/cleansing-wildfire/build_wildfire_repair.sh',
+          ]
+          report={}
+          for p in paths:
+              current=Path(p).read_bytes()
+              prior=subprocess.check_output(['git','show',f'{"ee926843353f0ecefd5da66f67c009fecd5c9f48"}:{p}'])
+              report[p]={
+                  'current_sha256':hashlib.sha256(current).hexdigest(),
+                  'behavior_head_sha256':hashlib.sha256(prior).hexdigest(),
+                  'byte_identical':current==prior,
+              }
+          report['production_tron_tree_byte_identical']=subprocess.call(['git','diff','--quiet','ee926843353f0ecefd5da66f67c009fecd5c9f48..HEAD','--','production/forge-ai/tron'])==0
+          report['battlebox_decks_byte_identical']=subprocess.call(['git','diff','--quiet','ee926843353f0ecefd5da66f67c009fecd5c9f48..HEAD','--','battlebox/decks'])==0
+          report['pass']=all(v.get('byte_identical',True) for v in report.values() if isinstance(v,dict)) and report['production_tron_tree_byte_identical'] and report['battlebox_decks_byte_identical']
+          Path('behavior-source-identity.json').write_text(json.dumps(report,indent=2)+'\n')
+          if not report['pass']:
+              raise SystemExit('behavior source identity failure')
+          PY
+
+      - name: Generated DestroyAi identity without building or running Forge
+        run: |
+          set -euo pipefail
+          mkdir -p stock-source generated
+          curl -fsSL 'https://raw.githubusercontent.com/Card-Forge/forge/forge-2.0.14/forge-ai/src/main/java/forge/ai/ability/DestroyAi.java' -o stock-source/DestroyAi.java
+          git show "$PRODUCTION_BEHAVIOR_HEAD:production/forge-ai/cleansing-wildfire/apply_destroy_ai.py" > /tmp/pr12-apply-old.py
+          python /tmp/pr12-apply-old.py --input stock-source/DestroyAi.java --output generated/DestroyAi.behavior-head.java
+          python production/forge-ai/cleansing-wildfire/apply_destroy_ai.py --input stock-source/DestroyAi.java --output generated/DestroyAi.current.java
+          cmp generated/DestroyAi.behavior-head.java generated/DestroyAi.current.java
+          sha256sum generated/DestroyAi.behavior-head.java generated/DestroyAi.current.java | tee generated-destroy-hashes.txt
+
+      - name: Verify and unpack preserved preflight artifact
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          curl --fail --location --retry 3 \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H 'Accept: application/vnd.github+json' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${PRESERVED_ARTIFACT_ID}/zip" \
+            -o preserved-production-validation.zip
+          echo "$PRESERVED_ARTIFACT_SHA256  preserved-production-validation.zip" | sha256sum -c -
+          sha256sum preserved-production-validation.zip | tee preserved-artifact-sha256.txt
+          mkdir preserved-artifact
+          unzip -q preserved-production-validation.zip -d preserved-artifact
+          test -s preserved-artifact/preflight/logs/jund-vs-esper-seed-97004.log
+          test -s preserved-artifact/preflight/logs/jund-vs-tron-seed-97001.log
+          test -s preserved-artifact/build-hashes.txt
+          test -s preserved-artifact/equivalence-report.json
+
+          grep -F "$EXPECTED_PRODUCTION_JAR_SHA256  forge-production-wildfire.jar" preserved-artifact/build-hashes.txt
+          test "$(python - <<'PY'
+          import json
+          e=json.load(open('preserved-artifact/equivalence-report.json'))
+          print(str(e['pass'] and e['telemetry_and_measurement_absent']).lower())
+          PY
+          )" = true
+
+      - name: Correct preserved six-cast chronology accounting
+        run: |
+          set -euo pipefail
+          python scripts/production_cleansing_wildfire_chronology.py \
+            --esper-log preserved-artifact/preflight/logs/jund-vs-esper-seed-97004.log \
+            --tron-log preserved-artifact/preflight/logs/jund-vs-tron-seed-97001.log \
+            --output corrected-preflight
+          cat corrected-preflight/preflight-accounting.md
+          test "$(python - <<'PY'
+          import json
+          r=json.load(open('corrected-preflight/preflight-accounting.json'))
+          print(str(r['pass'] and r['new_games_executed']==0 and len(r['wildfire_casts'])==6).lower())
+          PY
+          )" = true
+
+      - name: Final production acceptance report
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          identity=json.load(open('behavior-source-identity.json'))
+          eq=json.load(open('preserved-artifact/equivalence-report.json'))
+          pf=json.load(open('corrected-preflight/preflight-accounting.json'))
+          report={
+              'production_main':'f179a4505f02b2a62a9c323a9de0683d0fbfb0da',
+              'production_behavior_head':'ee926843353f0ecefd5da66f67c009fecd5c9f48',
+              'validation_only_correction':True,
+              'behavior_sources_byte_identical':identity['pass'],
+              'generated_destroy_ai_byte_identical':True,
+              'production_jar_sha256':'87cde76991505aa76a029dd353904d67cbe820d3c79a5fca6af948dcb321ad3b',
+              'production_jar_identity_from_preserved_artifact':True,
+              'validated_gameplay_equivalence':eq['pass'],
+              'telemetry_absent':eq['telemetry_and_measurement_absent'],
+              'production_tron_unchanged':identity['production_tron_tree_byte_identical'],
+              'decks_unchanged':identity['battlebox_decks_byte_identical'],
+              'preserved_artifact_id':9816707041,
+              'preserved_artifact_sha256':'13c54ab74d42ab65057ab94a01db6c6bf91d8f23155f42f34e901e2e88421e9f',
+              'preserved_artifact_integrity':True,
+              'games_reused':pf['games_reused'],
+              'new_games_executed':pf['new_games_executed'],
+              'wildfire_casts_classified':len(pf['wildfire_casts']),
+              'targeting_defects_demonstrated':sum(1 for x in pf['wildfire_casts'] if not x['matches_validated_rule']),
+              'automated_acceptance_pass':pf['pass'],
+          }
+          report['technically_ready_for_explicit_merge_decision']=all([
+              report['validation_only_correction'],
+              report['behavior_sources_byte_identical'],
+              report['generated_destroy_ai_byte_identical'],
+              report['production_jar_identity_from_preserved_artifact'],
+              report['validated_gameplay_equivalence'],
+              report['telemetry_absent'],
+              report['production_tron_unchanged'],
+              report['decks_unchanged'],
+              report['preserved_artifact_integrity'],
+              report['new_games_executed']==0,
+              report['wildfire_casts_classified']==6,
+              report['targeting_defects_demonstrated']==0,
+              report['automated_acceptance_pass'],
+          ])
+          Path('production-acceptance.json').write_text(json.dumps(report,indent=2)+'\n')
+          if not report['technically_ready_for_explicit_merge_decision']:
+              raise SystemExit('production acceptance failed')
+          PY
+          cat production-acceptance.json
+          cat corrected-preflight/preflight-accounting.md >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: production-cleansing-wildfire-artifact-continuation
+          path: |
+            continuation-changed-files.txt
+            chronology-tests.txt
+            repository-tests.txt
+            behavior-source-identity.json
+            generated-destroy-hashes.txt
+            preserved-artifact-sha256.txt
+            corrected-preflight/
+            production-acceptance.json
+          if-no-files-found: error
+          retention-days: 90
