@@ -1,0 +1,241 @@
+name: Post-merge 900-game Monte Carlo Pilot
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - '.github/workflows/post-merge-monte-carlo-pilot.yml'
+      - 'scripts/post_merge_monte_carlo_pilot.py'
+
+permissions:
+  contents: read
+
+env:
+  FORGE_VERSION: '2.0.14'
+  JAVA_VERSION: '17'
+  PRODUCTION_MAIN_SHA: 'f179a4505f02b2a62a9c323a9de0683d0fbfb0da'
+  VALIDATED_PRODUCTION_TREE: '66a0e1be38f9f9c9fc9287c55b5427194756cbd6'
+  EXPECTED_DECK_TREE: '3d55da96aa15ea6a7da5ed2cf98e7ff6417bee35'
+
+jobs:
+  verify-build-preflight:
+    name: Verify production build and one preflight
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: {fetch-depth: 0}
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.11'}
+      - uses: actions/setup-java@v4
+        with: {distribution: temurin, java-version: '17'}
+      - run: sudo apt-get update && sudo apt-get install -y xvfb
+
+      - name: Verify exact production and harness-only scope
+        run: |
+          git fetch origin main:refs/remotes/origin/main
+          test "$(git rev-parse origin/main)" = "$PRODUCTION_MAIN_SHA"
+          test "$(git merge-base origin/main HEAD)" = "$PRODUCTION_MAIN_SHA"
+          test "$(git rev-parse ${PRODUCTION_MAIN_SHA}^{tree})" = "$VALIDATED_PRODUCTION_TREE"
+          test "$(git rev-parse HEAD:battlebox/decks)" = "$EXPECTED_DECK_TREE"
+          changed="$(git diff --name-only origin/main...HEAD)"
+          printf '%s\n' "$changed" | tee harness-changed-files.txt
+          test "$(printf '%s\n' "$changed" | sed '/^$/d' | wc -l)" -eq 2
+          printf '%s\n' "$changed" | grep -qx '.github/workflows/post-merge-monte-carlo-pilot.yml'
+          printf '%s\n' "$changed" | grep -qx 'scripts/post_merge_monte_carlo_pilot.py'
+          git diff --exit-code origin/main...HEAD -- battlebox/decks production/forge-ai/tron
+          ! find . -type f \( -name '*.jar' -o -name '*.class' -o -name '*.log' -o -name '*.zip' \) -not -path './.git/*' | grep .
+          test ! -d experimental
+          git diff --check origin/main...HEAD
+
+      - name: Repository tests and deck validation
+        run: |
+          python -m unittest discover -s tests -v | tee repository-tests.txt
+          python scripts/validate_battlebox.py | tee deck-validation.txt
+          python -m compileall -q production tests scripts timeless_forge
+
+      - name: Download exact stock Forge 2.0.14 and source inputs
+        run: |
+          curl --fail --location --retry 3 \
+            "https://github.com/Card-Forge/forge/releases/download/forge-${FORGE_VERSION}/forge-installer-${FORGE_VERSION}.tar.bz2" \
+            -o forge.tar.bz2
+          tar -xjf forge.tar.bz2
+          cp "forge-gui-desktop-${FORGE_VERSION}-jar-with-dependencies.jar" forge-stock.jar
+          test -s forge-stock.jar
+          test -d res
+          test -d res/languages
+          test -n "$(find res/languages -type f -print -quit)"
+          mkdir -p forge-stock-src/forge/ai/ability
+          base='https://raw.githubusercontent.com/Card-Forge/forge/forge-2.0.14/forge-ai/src/main/java'
+          curl -fsSL "$base/forge/ai/ComputerUtil.java" -o forge-stock-src/forge/ai/ComputerUtil.java
+          curl -fsSL "$base/forge/ai/ComputerUtilCard.java" -o forge-stock-src/forge/ai/ComputerUtilCard.java
+          curl -fsSL "$base/forge/ai/ComputerUtilMana.java" -o forge-stock-src/forge/ai/ComputerUtilMana.java
+          curl -fsSL "$base/forge/ai/ability/PermanentAi.java" -o forge-stock-src/forge/ai/ability/PermanentAi.java
+
+      - name: Compile clean production Forge candidate
+        run: |
+          bash production/forge-ai/tron/build_tron_repair.sh \
+            forge-stock.jar forge-stock-src forge-production.jar build/post-merge-production
+          test -s forge-production.jar
+          sha256sum forge-stock.jar forge-production.jar | tee forge-build-sha256.txt
+          grep -q 'instanceof Number' build/post-merge-production/src/forge/ai/ComputerUtilMana.java
+          grep -q '((Number) key).intValue()' build/post-merge-production/src/forge/ai/ComputerUtilMana.java
+          ! grep -R -E 'TRON_CROP_REALPATH|TRON_CROP_FETCH|Hunting Pack|Prismatic Strands|Tinder Wall' \
+            build/post-merge-production/src/forge/ai/ComputerUtil.java \
+            build/post-merge-production/src/forge/ai/ComputerUtilCard.java \
+            build/post-merge-production/src/forge/ai/ComputerUtilMana.java \
+            build/post-merge-production/src/forge/ai/ability/PermanentAi.java
+
+      - name: Install byte-identical decks and run exactly one preflight
+        run: |
+          cd "$GITHUB_WORKSPACE"
+          python scripts/post_merge_monte_carlo_pilot.py preflight \
+            --forge-jar forge-production.jar \
+            --source-decks battlebox/decks \
+            --deck-dir "$HOME/.forge/decks/constructed" \
+            --output preflight-results \
+            --production-sha "$PRODUCTION_MAIN_SHA"
+          test "$(find preflight-results/logs -type f -name '*.log' | wc -l)" -eq 1
+          test "$(python - <<'PY'
+          import json
+          print(len(json.load(open('preflight-results/runtime-failures.json'))))
+          PY
+          )" -eq 0
+
+      - name: Record build and deck identities
+        run: |
+          python - <<'PY'
+          import hashlib, json
+          from pathlib import Path
+          decks={}
+          for p in sorted(Path('battlebox/decks').glob('*.dck')):
+              decks[p.name]=hashlib.sha256(p.read_bytes()).hexdigest()
+          Path('production-identities.json').write_text(json.dumps({
+              'production_main':'f179a4505f02b2a62a9c323a9de0683d0fbfb0da',
+              'validated_production_tree':'66a0e1be38f9f9c9fc9287c55b5427194756cbd6',
+              'deck_tree':'3d55da96aa15ea6a7da5ed2cf98e7ff6417bee35',
+              'deck_sha256':decks,
+          },indent=2)+'\n')
+          PY
+          printf 'runtime_workdir=%s\nresource_dir=%s\n' "$GITHUB_WORKSPACE" "$GITHUB_WORKSPACE/res" > runtime-layout.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: production-pilot-runtime
+          path: |
+            forge-production.jar
+            res/
+          retention-days: 1
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: production-pilot-preflight
+          path: |
+            preflight-results/
+            forge-build-sha256.txt
+            production-identities.json
+            runtime-layout.txt
+            harness-changed-files.txt
+            repository-tests.txt
+            deck-validation.txt
+          retention-days: 90
+
+  pilot:
+    name: Pilot batch ${{ matrix.batch }} (100 games)
+    needs: verify-build-preflight
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: true
+      matrix:
+        batch: [0, 1, 2, 3, 4, 5, 6, 7, 8]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.11'}
+      - uses: actions/setup-java@v4
+        with: {distribution: temurin, java-version: '17'}
+      - run: sudo apt-get update && sudo apt-get install -y xvfb
+      - uses: actions/download-artifact@v4
+        with:
+          name: production-pilot-runtime
+          path: .
+      - name: Verify runtime and deck identity
+        run: |
+          cd "$GITHUB_WORKSPACE"
+          test -s forge-production.jar
+          test -d res/languages
+          test "$(git rev-parse HEAD:battlebox/decks)" = "$EXPECTED_DECK_TREE"
+      - name: Run exactly 100 deterministic pilot games
+        run: |
+          cd "$GITHUB_WORKSPACE"
+          python scripts/post_merge_monte_carlo_pilot.py batch \
+            --batch "${{ matrix.batch }}" \
+            --forge-jar forge-production.jar \
+            --source-decks battlebox/decks \
+            --deck-dir "$HOME/.forge/decks/constructed" \
+            --output "pilot-batch-${{ matrix.batch }}" \
+            --production-sha "$PRODUCTION_MAIN_SHA"
+          test "$(python - <<PY
+          import json
+          print(len(json.load(open('pilot-batch-${{ matrix.batch }}/per-game.json'))))
+          PY
+          )" -eq 100
+          test "$(python - <<PY
+          import json
+          print(len(json.load(open('pilot-batch-${{ matrix.batch }}/runtime-failures.json'))))
+          PY
+          )" -eq 0
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: pilot-batch-${{ matrix.batch }}
+          path: pilot-batch-${{ matrix.batch }}/
+          if-no-files-found: error
+          retention-days: 90
+
+  aggregate:
+    name: Aggregate and gate 900-game pilot
+    needs: pilot
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.11'}
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: pilot-batch-*
+          path: pilot-input
+      - uses: actions/download-artifact@v4
+        with:
+          name: production-pilot-preflight
+          path: preflight-evidence
+      - name: Aggregate, verify matrix, and compute pilot statistics
+        run: |
+          python scripts/post_merge_monte_carlo_pilot.py aggregate \
+            --input pilot-input \
+            --output post-merge-monte-carlo-pilot
+          cp -a preflight-evidence post-merge-monte-carlo-pilot/preflight-evidence
+          cp post-merge-monte-carlo-pilot/gate-report.md "$GITHUB_STEP_SUMMARY"
+      - name: Preserve every verbose log in final artifact
+        run: |
+          mkdir -p post-merge-monte-carlo-pilot/logs
+          find pilot-input -type f -name '*.log' -print0 | sort -z | xargs -0 -I{} cp '{}' post-merge-monte-carlo-pilot/logs/
+          test "$(find post-merge-monte-carlo-pilot/logs -type f -name '*.log' | wc -l)" -eq 900
+      - name: Reproduction record
+        run: |
+          cat > post-merge-monte-carlo-pilot/reproduction.md <<EOF
+          # 900-game production pilot reproduction
+
+          Production main: $PRODUCTION_MAIN_SHA
+          Forge: $FORGE_VERSION
+          Deck tree: $EXPECTED_DECK_TREE
+          Matrix: 45 unordered pairings, both orientations, seeds 97001-97010 for every orientation.
+          Pilot games: 900 total (10 games/orientation; 20 games/unordered matchup).
+          Preflight: one additional Tron vs White Weenie game, seed 96999.
+          Forge arguments per pilot game: sim -d <deck_a> <deck_b> -D <installed-deck-dir> -n 1 -c 120 -s <seed>
+          No failed game is rerun, replaced, or discarded.
+          EOF
+      - uses: actions/upload-artifact@v4
+        with:
+          name: post-merge-monte-carlo-pilot-results
+          path: post-merge-monte-carlo-pilot/
+          retention-days: 90
