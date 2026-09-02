@@ -1,0 +1,231 @@
+name: Authoritative Post-Jund Production Balance Pilot
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - '.github/workflows/post-jund-production-balance-pilot.yml'
+      - 'scripts/post_jund_production_pilot.py'
+      - 'scripts/compare_post_jund_historical.py'
+      - 'tests/test_post_jund_production_pilot.py'
+
+permissions:
+  contents: read
+  actions: read
+
+env:
+  FORGE_VERSION: '2.0.14'
+  PRODUCTION_MAIN_SHA: '5a58621b797365aeedcc60d05da7d6b945ed7a32'
+  PRODUCTION_TREE_SHA: '9a025696bae4a5b1d7ade6e05e5757737ae280fb'
+  EXPECTED_DECK_TREE: '3d55da96aa15ea6a7da5ed2cf98e7ff6417bee35'
+  EXPECTED_TRON_TREE: '902ba2cf23e746469bccdeb59817d41cd16e913d'
+  HISTORICAL_ARTIFACT_ID: '9788572975'
+  HISTORICAL_ARTIFACT_SHA256: 'f847ca27f5947f55c09563d5fcb358785ba052f1f3a747441c7f27e7500028f'
+
+jobs:
+  verify-build-preflight:
+    name: Verify current production and one preflight
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with: {fetch-depth: 0}
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.11'}
+      - uses: actions/setup-java@v4
+        with: {distribution: temurin, java-version: '17'}
+      - run: sudo apt-get update && sudo apt-get install -y xvfb
+      - name: Exact production and harness-only scope
+        run: |
+          set -euo pipefail
+          git fetch origin main:refs/remotes/origin/main
+          test "$(git rev-parse origin/main)" = "$PRODUCTION_MAIN_SHA"
+          test "$(git rev-parse ${PRODUCTION_MAIN_SHA}^{tree})" = "$PRODUCTION_TREE_SHA"
+          test "$(git merge-base origin/main HEAD)" = "$PRODUCTION_MAIN_SHA"
+          test "$(git rev-parse HEAD:battlebox/decks)" = "$EXPECTED_DECK_TREE"
+          test "$(git rev-parse HEAD:production/forge-ai/tron)" = "$EXPECTED_TRON_TREE"
+          changed="$(git diff --name-only origin/main...HEAD)"
+          printf '%s\n' "$changed" | tee harness-changed-files.txt
+          test "$(printf '%s\n' "$changed" | sed '/^$/d' | wc -l)" -eq 4
+          for f in \
+            .github/workflows/post-jund-production-balance-pilot.yml \
+            scripts/post_jund_production_pilot.py \
+            scripts/compare_post_jund_historical.py \
+            tests/test_post_jund_production_pilot.py; do
+            printf '%s\n' "$changed" | grep -qx "$f"
+          done
+          git diff --exit-code origin/main...HEAD -- battlebox/decks production/forge-ai
+          ! find . -type f \( -name '*.jar' -o -name '*.class' -o -name '*.log' -o -name '*.zip' \) -not -path './.git/*' | grep .
+          git diff --check origin/main...HEAD
+          test -f production/forge-ai/cleansing-wildfire/CleansingWildfireTargetingPolicy.java
+          test -f production/forge-ai/cleansing-wildfire/apply_destroy_ai.py
+          ! grep -R -E 'CWAI|CWMEASURE|System\.identityHashCode|MagicStack|logCleansingWildfireTelemetry' production/forge-ai
+      - name: Repository, harness and deck tests
+        run: |
+          set -euo pipefail
+          python -m compileall -q production tests scripts timeless_forge
+          python -m unittest discover -s tests -v 2>&1 | tee repository-tests.txt
+          python scripts/validate_battlebox.py | tee deck-validation.txt
+      - name: Fetch exact Forge 2.0.14 runtime and AI sources
+        run: |
+          set -euo pipefail
+          curl --fail --location --retry 3 "https://github.com/Card-Forge/forge/releases/download/forge-${FORGE_VERSION}/forge-installer-${FORGE_VERSION}.tar.bz2" -o forge.tar.bz2
+          tar -xjf forge.tar.bz2
+          cp "forge-gui-desktop-${FORGE_VERSION}-jar-with-dependencies.jar" forge-stock.jar
+          test -s forge-stock.jar
+          test -d res/languages
+          test -n "$(find res/languages -type f -print -quit)"
+          mkdir -p forge-stock-src/forge/ai/ability
+          base='https://raw.githubusercontent.com/Card-Forge/forge/forge-2.0.14/forge-ai/src/main/java'
+          curl -fsSL "$base/forge/ai/ComputerUtil.java" -o forge-stock-src/forge/ai/ComputerUtil.java
+          curl -fsSL "$base/forge/ai/ComputerUtilCard.java" -o forge-stock-src/forge/ai/ComputerUtilCard.java
+          curl -fsSL "$base/forge/ai/ComputerUtilMana.java" -o forge-stock-src/forge/ai/ComputerUtilMana.java
+          curl -fsSL "$base/forge/ai/ability/PermanentAi.java" -o forge-stock-src/forge/ai/ability/PermanentAi.java
+          curl -fsSL "$base/forge/ai/ability/DestroyAi.java" -o forge-stock-src/forge/ai/ability/DestroyAi.java
+      - name: Build clean production Forge with both merged repairs
+        run: |
+          set -euo pipefail
+          bash production/forge-ai/cleansing-wildfire/build_wildfire_repair.sh forge-stock.jar forge-stock-src forge-production.jar build/post-jund-production
+          test -s forge-production.jar
+          grep -q 'CleansingWildfireTargetingPolicyTest: PASS' build/post-jund-production/policy-test.txt
+          grep -q 'instanceof Number' build/post-jund-production/tron/src/forge/ai/ComputerUtilMana.java
+          grep -q '((Number) key).intValue()' build/post-jund-production/tron/src/forge/ai/ComputerUtilMana.java
+          ! grep -R -E 'CWAI|CWMEASURE|System\.identityHashCode|MagicStack|logCleansingWildfireTelemetry' build/post-jund-production
+          sha256sum forge-stock.jar forge-production.jar | tee forge-build-sha256.txt
+      - name: Record exact identities
+        run: |
+          python - <<'PY'
+          import hashlib,json
+          from pathlib import Path
+          def h(p): return hashlib.sha256(Path(p).read_bytes()).hexdigest()
+          decks={p.name:h(p) for p in sorted(Path('battlebox/decks').glob('*.dck'))}
+          out={'production_main':'5a58621b797365aeedcc60d05da7d6b945ed7a32','production_tree':'9a025696bae4a5b1d7ade6e05e5757737ae280fb','deck_tree':'3d55da96aa15ea6a7da5ed2cf98e7ff6417bee35','tron_tree':'902ba2cf23e746469bccdeb59817d41cd16e913d','stock_jar_sha256':h('forge-stock.jar'),'production_jar_sha256':h('forge-production.jar'),'deck_sha256':decks}
+          Path('production-identities.json').write_text(json.dumps(out,indent=2)+'\n')
+          PY
+          printf 'working_directory=%s\nresources=%s/res\n' "$GITHUB_WORKSPACE" "$GITHUB_WORKSPACE" > runtime-layout.txt
+      - name: Exactly one clean-production preflight
+        run: |
+          set -euo pipefail
+          python scripts/post_jund_production_pilot.py preflight --forge-jar forge-production.jar --source-decks battlebox/decks --deck-dir "$HOME/.forge/decks/constructed" --output preflight-results
+          test "$(find preflight-results/logs -name '*.log' -type f | wc -l)" -eq 1
+          test "$(python - <<'PY'
+          import json; print(len(json.load(open('preflight-results/runtime-failures.json'))))
+          PY
+          )" -eq 0
+      - uses: actions/upload-artifact@v4
+        with:
+          name: post-jund-production-runtime
+          path: |
+            forge-production.jar
+            res/
+          retention-days: 1
+      - uses: actions/upload-artifact@v4
+        with:
+          name: post-jund-preflight-evidence
+          path: |
+            preflight-results/
+            production-identities.json
+            forge-build-sha256.txt
+            runtime-layout.txt
+            harness-changed-files.txt
+            repository-tests.txt
+            deck-validation.txt
+          retention-days: 90
+
+  pilot:
+    name: Pilot batch ${{ matrix.batch }}
+    needs: verify-build-preflight
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        batch: [0,1,2,3,4,5,6,7,8]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.11'}
+      - uses: actions/setup-java@v4
+        with: {distribution: temurin, java-version: '17'}
+      - run: sudo apt-get update && sudo apt-get install -y xvfb
+      - uses: actions/download-artifact@v4
+        with: {name: post-jund-production-runtime, path: .}
+      - name: Re-verify immutable inputs
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD:battlebox/decks)" = "$EXPECTED_DECK_TREE"
+          test "$(git rev-parse HEAD:production/forge-ai/tron)" = "$EXPECTED_TRON_TREE"
+          test -s forge-production.jar
+          test -d res/languages
+      - name: Run up to exactly 100 assigned games, never retry
+        run: |
+          set -euo pipefail
+          python scripts/post_jund_production_pilot.py batch --batch "${{ matrix.batch }}" --forge-jar forge-production.jar --source-decks battlebox/decks --deck-dir "$HOME/.forge/decks/constructed" --output "pilot-batch-${{ matrix.batch }}"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: post-jund-pilot-batch-${{ matrix.batch }}
+          path: pilot-batch-${{ matrix.batch }}/
+          if-no-files-found: error
+          retention-days: 90
+
+  aggregate:
+    name: Integrity gate, current analysis, matched comparator
+    needs: pilot
+    if: always() && needs.verify-build-preflight.result == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.11'}
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: post-jund-pilot-batch-*
+          path: pilot-input
+          merge-multiple: false
+      - uses: actions/download-artifact@v4
+        with: {name: post-jund-preflight-evidence, path: preflight-evidence}
+      - name: Aggregate and enforce the 900-game integrity gate
+        run: |
+          set -euo pipefail
+          python scripts/post_jund_production_pilot.py aggregate --input pilot-input --output post-jund-production-pilot
+          mkdir -p post-jund-production-pilot/logs
+          find pilot-input -type f -name '*.log' -print0 | sort -z | xargs -0 -r -I{} cp '{}' post-jund-production-pilot/logs/
+          test "$(find post-jund-production-pilot/logs -type f -name '*.log' | wc -l)" -eq 900
+          cp -a preflight-evidence post-jund-production-pilot/preflight-evidence
+      - name: Download and verify historical pre-Jund comparator artifact
+        env: {GH_TOKEN: '${{ github.token }}'}
+        run: |
+          set -euo pipefail
+          curl -fsSL -H "Authorization: Bearer $GH_TOKEN" -H 'Accept: application/vnd.github+json' "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${HISTORICAL_ARTIFACT_ID}/zip" -o historical.zip
+          echo "${HISTORICAL_ARTIFACT_SHA256}  historical.zip" | sha256sum -c -
+          mkdir historical-artifact
+          unzip -q historical.zip -d historical-artifact
+          printf '%s  %s\n' "$HISTORICAL_ARTIFACT_SHA256" "$HISTORICAL_ARTIFACT_ID" > post-jund-production-pilot/historical-artifact-verification.txt
+      - name: Matched 900-condition pre/post-Jund comparison
+        run: |
+          set -euo pipefail
+          python scripts/compare_post_jund_historical.py --current post-jund-production-pilot/per-game.json --historical historical-artifact --output post-jund-production-pilot
+      - name: Reproduction and acceptance record
+        run: |
+          cat > post-jund-production-pilot/reproduction.md <<EOF
+          # Authoritative post-Jund production pilot reproduction
+          Production main: $PRODUCTION_MAIN_SHA
+          Production tree: $PRODUCTION_TREE_SHA
+          Forge: $FORGE_VERSION
+          Deck tree: $EXPECTED_DECK_TREE
+          Production Tron tree: $EXPECTED_TRON_TREE
+          Matrix: all 45 unordered pairs, both orientations, seeds 97001-97010, one game per condition, 900 games.
+          Command per pilot condition: xvfb-run -a java -jar <clean-production.jar> sim -d <deck_a> <deck_b> -D <deck-dir> -n 1 -c 120 -s <seed>
+          Exactly one additional preflight was run before the batch. No failed game was retried or replaced.
+          Historical comparator artifact: $HISTORICAL_ARTIFACT_ID, SHA-256 $HISTORICAL_ARTIFACT_SHA256.
+          EOF
+          cp post-jund-production-pilot/report.md "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: authoritative-post-jund-production-balance-pilot-results
+          path: post-jund-production-pilot/
+          if-no-files-found: error
+          retention-days: 90
