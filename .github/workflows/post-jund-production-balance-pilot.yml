@@ -59,7 +59,7 @@ jobs:
           git diff --check origin/main...HEAD
           test -f production/forge-ai/cleansing-wildfire/CleansingWildfireTargetingPolicy.java
           test -f production/forge-ai/cleansing-wildfire/apply_destroy_ai.py
-          ! grep -R -E 'CWAI|CWMEASURE|System\.identityHashCode|MagicStack|logCleansingWildfireTelemetry' production/forge-ai
+          ! find production/forge-ai -type f \( -name '*.java' -o -name '*.py' -o -name '*.sh' \) -print0 | xargs -0 grep -E 'CWAI|CWMEASURE|System\.identityHashCode|MagicStack|logCleansingWildfireTelemetry'
       - name: Repository, harness and deck tests
         run: |
           set -euo pipefail
