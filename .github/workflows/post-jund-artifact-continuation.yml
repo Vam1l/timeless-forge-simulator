@@ -1,0 +1,128 @@
+name: Post-Jund Artifact-Only Aggregation Continuation
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - '.github/workflows/post-jund-artifact-continuation.yml'
+      - 'scripts/post_jund_artifact_aggregate.py'
+      - 'scripts/post_jund_artifact_compare.py'
+      - 'tests/test_post_jund_artifact_aggregate.py'
+
+permissions:
+  contents: read
+  actions: read
+
+env:
+  PRODUCTION_MAIN_SHA: '5a58621b797365aeedcc60d05da7d6b945ed7a32'
+  PRODUCTION_TREE_SHA: '9a025696bae4a5b1d7ade6e05e5757737ae280fb'
+  EXPECTED_DECK_TREE: '3d55da96aa15ea6a7da5ed2cf98e7ff6417bee35'
+  EXPECTED_TRON_TREE: '902ba2cf23e746469bccdeb59817d41cd16e913d'
+  EXPECTED_JAR_SHA256: '342da36f07d8445fa193dc39408e1e35ec7a9ec04a71b6e82f9258adb3876826'
+  PREFLIGHT_ID: '9864405003'
+  PREFLIGHT_SHA256: '1d6fb370411df81ad8ff20066881013a9aacfd2ca200d2671d3ec8aa2cf2f512'
+  HISTORICAL_ID: '9788572975'
+  HISTORICAL_SHA256: 'f847ca27f5947f55c09563d5fcb358785ba052f1f3a747441c7f27e7500028f6'
+
+jobs:
+  continue-from-artifacts:
+    name: Verify preserved corpus and aggregate without gameplay
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with: {fetch-depth: 0}
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.11'}
+      - name: Harness-only and zero-game execution guard
+        run: |
+          set -euo pipefail
+          git fetch origin main:refs/remotes/origin/main
+          test "$(git rev-parse origin/main)" = "$PRODUCTION_MAIN_SHA"
+          test "$(git rev-parse ${PRODUCTION_MAIN_SHA}^{tree})" = "$PRODUCTION_TREE_SHA"
+          test "$(git rev-parse HEAD:battlebox/decks)" = "$EXPECTED_DECK_TREE"
+          test "$(git rev-parse HEAD:production/forge-ai/tron)" = "$EXPECTED_TRON_TREE"
+          git diff --exit-code origin/main...HEAD -- battlebox/decks production/forge-ai
+          changed="$(git diff --name-only origin/main...HEAD)"
+          printf '%s\n' "$changed" > continuation-pr-changed-files.txt
+          if printf '%s\n' "$changed" | grep -Ev '^(\.github/workflows/|scripts/|tests/)' | grep .; then echo 'non-harness path detected'; exit 1; fi
+          python -m py_compile scripts/post_jund_artifact_aggregate.py scripts/post_jund_artifact_compare.py
+          python -m unittest tests.test_post_jund_artifact_aggregate -v
+          cat > zero-game-execution.json <<'EOF'
+          {
+            "new_preflight_games_executed": 0,
+            "new_pilot_games_executed": 0,
+            "existing_batch_games_reused": 900,
+            "forge_rebuilt": false,
+            "java_executed": false,
+            "xvfb_run_executed": false
+          }
+          EOF
+      - name: Download exact preserved artifacts by numeric ID
+        env:
+          GH_TOKEN: '${{ github.token }}'
+        run: |
+          set -euo pipefail
+          mkdir -p source-zips artifact-input preflight-evidence historical-artifact
+          download() {
+            id="$1"; file="$2"; expected="$3"
+            curl -fsSL -H "Authorization: Bearer $GH_TOKEN" -H 'Accept: application/vnd.github+json' "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${id}/zip" -o "source-zips/${file}"
+            echo "${expected}  source-zips/${file}" | sha256sum -c -
+          }
+          download 9865298243 batch-0.zip 2e2210135c1ef4caac90a4da769d97eb54c1a147d66a513b1a64407374190b2d
+          download 9864963735 batch-1.zip 502179c90d6e38ac4a990ac24dec188451518e1cb7f6ca93511ab5fad8295e3b
+          download 9865276820 batch-2.zip f828d1ac3357314e3ba7a001450c4f5f22a519a5740218e60d2744dea271beaf
+          download 9865212819 batch-3.zip fef926604fcf5bc11aaa2d3caa248cc1b15b1b7eaad5cf874965c97210b6edd8
+          download 9865178302 batch-4.zip 12f331be2f16383d936da1f9c20745320774d09dc1035d39e8e7e86db0bf62bf
+          download 9864938363 batch-5.zip ea9a1bc1aedaa58c2706665e678051086705ff915ef69e342581286531bf5123
+          download 9865281222 batch-6.zip fd1b6c2f0d52d8e6a640daa6a665a205e6e052c27d2882d778b2fc8b72bd0459
+          download 9865404220 batch-7.zip 6feb3c048f68618a12916716497a325d7e1b61a01290aebbd09fd0873727fd72
+          download 9865358107 batch-8.zip d28c0153f5448a0b6421caa67100bc55d6982def5ec76de0bd263a65544ff37d
+          download "$PREFLIGHT_ID" preflight.zip "$PREFLIGHT_SHA256"
+          download "$HISTORICAL_ID" historical.zip "$HISTORICAL_SHA256"
+          for b in 0 1 2 3 4 5 6 7 8; do mkdir "artifact-input/post-jund-pilot-batch-${b}"; unzip -q "source-zips/batch-${b}.zip" -d "artifact-input/post-jund-pilot-batch-${b}"; done
+          unzip -q source-zips/preflight.zip -d preflight-evidence
+          unzip -q source-zips/historical.zip -d historical-artifact
+      - name: Verify preserved preflight and production identity without rerun
+        run: |
+          python - <<'PY'
+          import json
+          ident=json.load(open('preflight-evidence/production-identities.json')); pf=json.load(open('preflight-evidence/preflight-results/preflight.json')); failures=json.load(open('preflight-evidence/preflight-results/runtime-failures.json'))
+          expected={'production_main':'5a58621b797365aeedcc60d05da7d6b945ed7a32','production_tree':'9a025696bae4a5b1d7ade6e05e5757737ae280fb','deck_tree':'3d55da96aa15ea6a7da5ed2cf98e7ff6417bee35','tron_tree':'902ba2cf23e746469bccdeb59817d41cd16e913d','production_jar_sha256':'342da36f07d8445fa193dc39408e1e35ec7a9ec04a71b6e82f9258adb3876826'}
+          for k,v in expected.items():
+            if ident.get(k)!=v: raise SystemExit(f'preflight identity mismatch {k}: {ident.get(k)} != {v}')
+          if failures: raise SystemExit(f'preserved preflight failures nonempty: {failures}')
+          if pf.get('issues')!=[] or pf.get('jar_sha256')!=expected['production_jar_sha256']: raise SystemExit('preserved preflight result/identity mismatch')
+          print('preserved preflight identity: PASS; no execution performed')
+          PY
+      - name: Strictly verify all nine batches and aggregate 900 preserved games
+        run: |
+          set -euo pipefail
+          python scripts/post_jund_artifact_aggregate.py --input artifact-input --output final-results
+          test "$(find artifact-input -type f -path '*/logs/*.log' | wc -l)" -eq 900
+          mkdir -p final-results/logs
+          for b in 0 1 2 3 4 5 6 7 8; do cp artifact-input/post-jund-pilot-batch-${b}/logs/*.log final-results/logs/; done
+          test "$(find final-results/logs -type f -name '*.log' | wc -l)" -eq 900
+      - name: Exact matched historical comparison
+        run: |
+          set -euo pipefail
+          python scripts/post_jund_artifact_compare.py --current final-results/per-game.json --historical historical-artifact --output final-results
+      - name: Record exact source artifact provenance
+        run: |
+          python - <<'PY'
+          import json
+          batches=[(0,9865298243,'2e2210135c1ef4caac90a4da769d97eb54c1a147d66a513b1a64407374190b2d'),(1,9864963735,'502179c90d6e38ac4a990ac24dec188451518e1cb7f6ca93511ab5fad8295e3b'),(2,9865276820,'f828d1ac3357314e3ba7a001450c4f5f22a519a5740218e60d2744dea271beaf'),(3,9865212819,'fef926604fcf5bc11aaa2d3caa248cc1b15b1b7eaad5cf874965c97210b6edd8'),(4,9865178302,'12f331be2f16383d936da1f9c20745320774d09dc1035d39e8e7e86db0bf62bf'),(5,9864938363,'ea9a1bc1aedaa58c2706665e678051086705ff915ef69e342581286531bf5123'),(6,9865281222,'fd1b6c2f0d52d8e6a640daa6a665a205e6e052c27d2882d778b2fc8b72bd0459'),(7,9865404220,'6feb3c048f68618a12916716497a325d7e1b61a01290aebbd09fd0873727fd72'),(8,9865358107,'d28c0153f5448a0b6421caa67100bc55d6982def5ec76de0bd263a65544ff37d')]
+          out={'batches':[{'batch':b,'artifact_id':i,'sha256':s,'verified':True} for b,i,s in batches],'preflight':{'artifact_id':9864405003,'sha256':'1d6fb370411df81ad8ff20066881013a9aacfd2ca200d2671d3ec8aa2cf2f512','verified':True},'historical':{'artifact_id':9788572975,'sha256':'f847ca27f5947f55c09563d5fcb358785ba052f1f3a747441c7f27e7500028f6','verified':True},'new_preflight_games_executed':0,'new_pilot_games_executed':0,'existing_batch_games_reused':900}
+          open('final-results/source-artifact-verification.json','w').write(json.dumps(out,indent=2)+'\n')
+          PY
+          cp zero-game-execution.json final-results/zero-game-execution.json
+          cp continuation-pr-changed-files.txt final-results/continuation-pr-changed-files.txt
+          cat final-results/report.md final-results/matched-comparison.md > final-results/combined-report.md
+          cat final-results/combined-report.md >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: authoritative-post-jund-artifact-only-continuation-results
+          path: final-results/
+          if-no-files-found: error
+          retention-days: 90
