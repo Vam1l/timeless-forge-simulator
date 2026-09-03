@@ -1,0 +1,21 @@
+{
+  "name": "White Tokens v0.2 targeted stabilization — 240 games",
+  "description": "White v0.2 versus five opponents, both orientations, 24 games per orientation.",
+  "games_preboard": 24,
+  "games_postboard": 0,
+  "clock_seconds": 120,
+  "deck_dir": "decks",
+  "output_dir": "results/white-v0.2-targeted-240",
+  "matchups": [
+    {"deck_a": "01-mono-white-tokens.dck", "deck_b": "02-mono-green-ramp.dck"},
+    {"deck_a": "02-mono-green-ramp.dck", "deck_b": "01-mono-white-tokens.dck"},
+    {"deck_a": "01-mono-white-tokens.dck", "deck_b": "03-mono-red-burn.dck"},
+    {"deck_a": "03-mono-red-burn.dck", "deck_b": "01-mono-white-tokens.dck"},
+    {"deck_a": "01-mono-white-tokens.dck", "deck_b": "04-mono-black-sacrifice.dck"},
+    {"deck_a": "04-mono-black-sacrifice.dck", "deck_b": "01-mono-white-tokens.dck"},
+    {"deck_a": "01-mono-white-tokens.dck", "deck_b": "05-mono-blue-tempo-control.dck"},
+    {"deck_a": "05-mono-blue-tempo-control.dck", "deck_b": "01-mono-white-tokens.dck"},
+    {"deck_a": "01-mono-white-tokens.dck", "deck_b": "06-gruul-chatterstorm.dck"},
+    {"deck_a": "06-gruul-chatterstorm.dck", "deck_b": "01-mono-white-tokens.dck"}
+  ]
+}

@@ -1,4 +1,4 @@
-name: Six-Deck Budget Battle Box Pilot
+name: White Tokens v0.2 Targeted Gate
 
 on:
   workflow_dispatch:
@@ -65,7 +65,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        batch: [0, 1, 2, 3, 4, 5]
+        batch: [0, 1, 2, 3, 4]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -79,22 +79,22 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           name: six-deck-forge-${{ env.FORGE_VERSION }}
-      - name: Run five orientations
+      - name: Run two orientations
         env:
           BATCH: ${{ matrix.batch }}
         run: |
-          start=$((BATCH * 5))
-          indices=$(seq "$start" "$((start + 4))")
+          start=$((BATCH * 2))
+          indices=$(seq "$start" "$((start + 1))")
           python scripts/run_matchup_batch.py \
             --matchup-indices $indices \
-            --config experiments/six-deck-v0.1/pilot-300.json \
+            --config experiments/six-deck-v0.1/white-v0.2-targeted-240.json \
             --forge-jar "forge-${FORGE_VERSION}.jar" \
-            --output "six-deck-batch-${BATCH}"
+            --output "white-v02-batch-${BATCH}"
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: six-deck-budget-pilot-batch-${{ matrix.batch }}
-          path: six-deck-batch-${{ matrix.batch }}/
+          name: white-v02-targeted-batch-${{ matrix.batch }}
+          path: white-v02-batch-${{ matrix.batch }}/
           if-no-files-found: error
           retention-days: 30
 
@@ -109,27 +109,27 @@ jobs:
           python-version: "3.11"
       - uses: actions/download-artifact@v4
         with:
-          pattern: six-deck-budget-pilot-batch-*
+          pattern: white-v02-targeted-batch-*
           path: all-results
-      - run: python scripts/aggregate_results.py all-results six-deck-pilot-results
+      - run: python scripts/aggregate_results.py all-results white-v02-targeted-results
       - name: Enforce parse-completeness gate
         run: |
           python - <<'PY'
           import csv
           from pathlib import Path
-          rows = list(csv.DictReader(Path('six-deck-pilot-results/summary.csv').open()))
+          rows = list(csv.DictReader(Path('white-v02-targeted-results/summary.csv').open()))
           requested = sum(int(row['requested_games']) for row in rows)
           parsed = sum(int(row['parsed_games']) for row in rows)
           unparsed = sum(int(row['unparsed']) for row in rows)
-          assert len(rows) == 30, len(rows)
-          assert requested == 300, requested
-          assert parsed == 300, parsed
+          assert len(rows) == 10, len(rows)
+          assert requested == 240, requested
+          assert parsed == 240, parsed
           assert unparsed == 0, unparsed
           PY
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: six-deck-budget-pilot-results
-          path: six-deck-pilot-results/
+          name: white-v02-targeted-results
+          path: white-v02-targeted-results/
           if-no-files-found: error
           retention-days: 30
