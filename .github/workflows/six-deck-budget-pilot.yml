@@ -84,6 +84,8 @@ jobs:
           SEED: ${{ matrix.seed }}
         run: |
           mkdir -p "verbose-${LABEL}"
+          mkdir -p "$HOME/.forge/decks/constructed"
+          cp "$DECK_DIR"/*.dck "$HOME/.forge/decks/constructed/"
           timeout 240s xvfb-run -a java -jar "forge-${FORGE_VERSION}.jar" sim \
             -d 01-mono-white-tokens.dck "$OPPONENT" -D "$DECK_DIR" \
             -n 3 -c 120 -s "$SEED" \
