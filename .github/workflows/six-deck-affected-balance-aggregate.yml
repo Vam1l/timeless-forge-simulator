@@ -1,0 +1,128 @@
+name: Aggregate Six-Deck Affected Balance 432
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - experiment/six-deck-v04-blue-v02-aggregate-20260903
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  aggregate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: affected-balance-white-*
+          path: affected-balance-432
+          run-id: 33767395281
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: affected-balance-blue-*
+          path: affected-balance-432
+          run-id: 33767395281
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Enforce preserved-run completeness and behavior gates
+        run: |
+          test "$(find affected-balance-432 -name '*.log' | wc -l)" = 18
+          test "$(grep -rhF 'Game Result: Game' affected-balance-432 | wc -l)" = 432
+          grep -rhF 'cast Mental Note' affected-balance-432 >/dev/null
+          grep -rhF 'cast Frost Trickster' affected-balance-432 >/dev/null
+          grep -rhF 'cast Fortify' affected-balance-432 >/dev/null
+          ! grep -rF 'cast Thought Scour' affected-balance-432
+          ! grep -rF 'cast Echoing Truth' affected-balance-432
+          ! grep -rEiq 'NullPointerException|UnsupportedOperationException|Card not found|Unable to load deck|No deck found|Could not load deck|match cannot start|Forge exited' affected-balance-432
+      - name: Generate independent summary
+        run: |
+          python - <<'PY'
+          import csv
+          import json
+          import re
+          from collections import Counter
+          from pathlib import Path
+
+          root = Path('affected-balance-432')
+          result_re = re.compile(r'^Game Result: Game \d+ ended in \d+ ms\. Ai\(([12])\)-(.+) has won!$')
+          rows = []
+          seat = Counter()
+          telemetry = Counter()
+
+          for folder in sorted(path for path in root.iterdir() if path.is_dir()):
+              label = folder.name.removeprefix('affected-balance-')
+              winners = Counter()
+              for log in sorted(folder.glob('*.log')):
+                  for line in log.read_text(errors='replace').splitlines():
+                      match = result_re.match(line)
+                      if match:
+                          seat[match.group(1)] += 1
+                          winners[match.group(2)] += 1
+                      telemetry['mental_note_casts'] += ' cast Mental Note' in line
+                      telemetry['mental_note_resolves'] += line.startswith('Resolve Stack: Mental Note')
+                      telemetry['blue_self_mill_lines'] += 'AI-safe milled ' in line
+                      telemetry['frost_trickster_casts'] += ' cast Frost Trickster' in line
+                      telemetry['frost_trickster_targets'] += 'triggered Frost Trickster targeting' in line
+                      telemetry['fortify_casts'] += ' cast Fortify' in line
+                      telemetry['fortify_resolves'] += line.startswith('Resolve Stack: Fortify')
+
+              focus = 'Mono White Tokens v0.4' if label.startswith('white-') else 'Mono Blue Tempo Control v0.2 AI-safe'
+              total = sum(winners.values())
+              assert total == 48, (label, total)
+              focus_wins = winners[focus]
+              opponent, opponent_wins = next((deck, wins) for deck, wins in winners.items() if deck != focus)
+              rows.append({
+                  'matchup': label,
+                  'focus_deck': focus,
+                  'opponent': opponent,
+                  'focus_wins': focus_wins,
+                  'opponent_wins': opponent_wins,
+                  'games': total,
+                  'focus_win_rate': round(focus_wins / total, 6),
+              })
+
+          assert sum(row['games'] for row in rows) == 432
+          payload = {
+              'source_run_id': 33767395281,
+              'new_games_executed': 0,
+              'preserved_games_reused': 432,
+              'seat_a_wins': seat['1'],
+              'seat_b_wins': seat['2'],
+              'rows': rows,
+              'telemetry': dict(telemetry),
+          }
+          Path('summary.json').write_text(json.dumps(payload, indent=2) + '\n')
+          with Path('summary.csv').open('w', newline='') as handle:
+              writer = csv.DictWriter(handle, fieldnames=rows[0].keys())
+              writer.writeheader()
+              writer.writerows(rows)
+          lines = [
+              '# Six-Deck v0.4 / Blue v0.2 Affected-Matchup Balance',
+              '',
+              '| Matchup | Focus wins | Opponent wins | Focus rate |',
+              '|---|---:|---:|---:|',
+          ]
+          for row in rows:
+              lines.append(f"| {row['matchup']} | {row['focus_wins']} | {row['opponent_wins']} | {row['focus_win_rate']:.1%} |")
+          lines += [
+              '',
+              f"Seat A: {seat['1']}–{seat['2']} ({seat['1'] / 432:.1%})",
+              '',
+              f"Telemetry: {dict(telemetry)}",
+              '',
+              'Storm matchups remain AI-confounded and should not drive deck weakening.',
+          ]
+          Path('summary.md').write_text('\n'.join(lines) + '\n')
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: six-deck-v04-blue-v02-affected-balance-432-corrected
+          path: |
+            affected-balance-432/
+            summary.csv
+            summary.json
+            summary.md
+          if-no-files-found: error
+          retention-days: 30
