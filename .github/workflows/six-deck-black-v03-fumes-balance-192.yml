@@ -1,0 +1,175 @@
+name: Six-Deck Black v0.3 Suffocating Fumes Balance 192
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - experiment/six-deck-black-v03-fumes-balance-20260903
+
+permissions:
+  contents: read
+
+env:
+  FORGE_VERSION: "2.0.14"
+  JAVA_VERSION: "17"
+  DECK_DIR: experiments/six-deck-v0.1/decks
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Verify harness and candidate decks
+        run: |
+          python -m unittest discover -s tests -v
+          grep -Fx 'Name=Mono Black Sacrifice v0.3' "$DECK_DIR/04-mono-black-sacrifice.dck"
+          grep -Fx '2 Suffocating Fumes' "$DECK_DIR/04-mono-black-sacrifice.dck"
+          ! grep -F 'Corrupted Conviction' "$DECK_DIR/04-mono-black-sacrifice.dck"
+          grep -Fx 'Name=Mono Red Burn v0.3' "$DECK_DIR/03-mono-red-burn.dck"
+          grep -Fx 'Name=Mono White Tokens v0.4' "$DECK_DIR/01-mono-white-tokens.dck"
+          grep -Fx 'Name=Mono Blue Tempo Control v0.2 AI-safe' "$DECK_DIR/05-mono-blue-tempo-control.dck"
+          python - <<'PY'
+          from pathlib import Path
+          for deck in sorted(Path('experiments/six-deck-v0.1/decks').glob('*.dck')):
+              total = sum(int(line.split(' ', 1)[0]) for line in deck.read_text().splitlines() if line[:1].isdigit())
+              assert total == 60, f'{deck}: {total} cards'
+          PY
+
+  forge:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download Forge
+        run: |
+          curl --fail --location --retry 3 \
+            "https://github.com/Card-Forge/forge/releases/download/forge-${FORGE_VERSION}/forge-installer-${FORGE_VERSION}.tar.bz2" \
+            --output forge.tar.bz2
+          tar -xjf forge.tar.bz2
+          cp "forge-gui-desktop-${FORGE_VERSION}-jar-with-dependencies.jar" "forge-${FORGE_VERSION}.jar"
+          test -s "forge-${FORGE_VERSION}.jar"
+          sha256sum "forge-${FORGE_VERSION}.jar"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: black-v03-forge-runtime
+          path: |
+            forge-${{ env.FORGE_VERSION }}.jar
+            res/
+          retention-days: 1
+
+  audit:
+    needs: [validate, forge]
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: ${{ env.JAVA_VERSION }}
+      - run: sudo apt-get update && sudo apt-get install -y xvfb
+      - uses: actions/download-artifact@v4
+        with:
+          name: black-v03-forge-runtime
+      - name: Audit Suffocating Fumes decisions in 24 games
+        run: |
+          mkdir -p audit "$HOME/.forge/decks/constructed"
+          cp "$DECK_DIR"/*.dck "$HOME/.forge/decks/constructed/"
+          timeout 900s xvfb-run -a java -jar "forge-${FORGE_VERSION}.jar" sim \
+            -d 04-mono-black-sacrifice.dck 01-mono-white-tokens.dck -D "$DECK_DIR" \
+            -n 12 -c 120 -s 103401 > audit/red-first.log 2>&1
+          timeout 900s xvfb-run -a java -jar "forge-${FORGE_VERSION}.jar" sim \
+            -d 01-mono-white-tokens.dck 04-mono-black-sacrifice.dck -D "$DECK_DIR" \
+            -n 12 -c 120 -s 103402 > audit/red-second.log 2>&1
+          test "$(grep -hF 'Game Result: Game' audit/*.log | wc -l)" = 24
+          grep -hF 'cast Suffocating Fumes' audit/*.log >/dev/null
+          ! grep -Eiq 'NullPointerException|UnsupportedOperationException|Card not found|Unable to load deck|No deck found|Could not load deck|match cannot start|Forge exited' audit/*.log
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: black-v03-fumes-audit
+          path: audit/
+          if-no-files-found: error
+          retention-days: 30
+
+  balance:
+    needs: [validate, forge, audit]
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - label: black-white
+            opponent: 01-mono-white-tokens.dck
+            seed: 104001
+          - label: black-green
+            opponent: 02-mono-green-ramp.dck
+            seed: 104101
+          - label: black-red
+            opponent: 03-mono-red-burn.dck
+            seed: 104201
+          - label: black-blue
+            opponent: 05-mono-blue-tempo-control.dck
+            seed: 104301
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: ${{ env.JAVA_VERSION }}
+      - run: sudo apt-get update && sudo apt-get install -y xvfb
+      - uses: actions/download-artifact@v4
+        with:
+          name: black-v03-forge-runtime
+      - name: Run 48 orientation-balanced verbose games
+        env:
+          LABEL: ${{ matrix.label }}
+          OPPONENT: ${{ matrix.opponent }}
+          SEED: ${{ matrix.seed }}
+        run: |
+          mkdir -p "black-${LABEL}"
+          mkdir -p "$HOME/.forge/decks/constructed"
+          cp "$DECK_DIR"/*.dck "$HOME/.forge/decks/constructed/"
+          timeout 1200s xvfb-run -a java -jar "forge-${FORGE_VERSION}.jar" sim \
+            -d 04-mono-black-sacrifice.dck "$OPPONENT" -D "$DECK_DIR" \
+            -n 24 -c 120 -s "$SEED" > "black-${LABEL}/black-first.log" 2>&1
+          reverse_seed=$((SEED + 1))
+          timeout 1200s xvfb-run -a java -jar "forge-${FORGE_VERSION}.jar" sim \
+            -d "$OPPONENT" 04-mono-black-sacrifice.dck -D "$DECK_DIR" \
+            -n 24 -c 120 -s "$reverse_seed" > "black-${LABEL}/black-second.log" 2>&1
+          test "$(grep -hF 'Game Result: Game' black-${LABEL}/*.log | wc -l)" = 48
+          grep -hF 'Simulation mode' black-${LABEL}/*.log >/dev/null
+          ! grep -Eiq 'NullPointerException|UnsupportedOperationException|Card not found|Unable to load deck|No deck found|Could not load deck|match cannot start|Forge exited' black-${LABEL}/*.log
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: black-balance-${{ matrix.label }}
+          path: black-${{ matrix.label }}/
+          if-no-files-found: error
+          retention-days: 30
+
+  report:
+    needs: balance
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: black-balance-*
+          path: black-balance-192
+      - name: Verify completeness and card behavior
+        run: |
+          test "$(find black-balance-192 -name '*.log' | wc -l)" = 8
+          test "$(grep -rhF 'Game Result: Game' black-balance-192 | wc -l)" = 192
+          grep -rhF 'cast Suffocating Fumes' black-balance-192 >/dev/null
+          ! grep -rF 'cast Corrupted Conviction' black-balance-192
+          ! grep -rEiq 'NullPointerException|UnsupportedOperationException|Card not found|Unable to load deck|No deck found|Could not load deck|match cannot start|Forge exited' black-balance-192
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: six-deck-black-v03-targeted-balance-192
+          path: black-balance-192/
+          if-no-files-found: error
+          retention-days: 30
