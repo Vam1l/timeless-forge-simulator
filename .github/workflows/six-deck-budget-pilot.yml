@@ -1,4 +1,4 @@
-name: White Tokens v0.3 Targeted Gate
+name: White Tokens v0.3 Verbose Audit
 
 on:
   workflow_dispatch:
@@ -12,31 +12,20 @@ permissions:
 env:
   FORGE_VERSION: "2.0.14"
   JAVA_VERSION: "17"
+  DECK_DIR: experiments/six-deck-v0.1/decks
 
 jobs:
   validate:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.11"
-      - name: Validate harness and six decks
+      - name: Verify exact White v0.3 input
         run: |
-          python -m unittest discover -s tests -v
-          python - <<'PY'
-          from pathlib import Path
-          for deck in sorted(Path('experiments/six-deck-v0.1/decks').glob('*.dck')):
-              count = 0
-              in_main = False
-              for raw in deck.read_text().splitlines():
-                  line = raw.strip()
-                  if line == '[Main]':
-                      in_main = True
-                  elif in_main and line and not line.startswith('['):
-                      count += int(line.split(' ', 1)[0])
-              assert count == 60, f'{deck}: {count} cards'
-          PY
+          grep -Fx '4 Garrison Cat' "$DECK_DIR/01-mono-white-tokens.dck"
+          grep -Fx "2 Captain's Call" "$DECK_DIR/01-mono-white-tokens.dck"
+          ! grep -F 'Lunarch Veteran' "$DECK_DIR/01-mono-white-tokens.dck"
+          ! grep -F 'Battle Screech' "$DECK_DIR/01-mono-white-tokens.dck"
+          test "$(awk '/^[0-9]+ / {sum += $1} END {print sum}' "$DECK_DIR/01-mono-white-tokens.dck")" = 60
 
   forge:
     runs-on: ubuntu-latest
@@ -52,25 +41,34 @@ jobs:
           sha256sum "forge-${FORGE_VERSION}.jar"
       - uses: actions/upload-artifact@v4
         with:
-          name: six-deck-forge-${{ env.FORGE_VERSION }}
+          name: verbose-audit-forge-${{ env.FORGE_VERSION }}
           path: |
             forge-${{ env.FORGE_VERSION }}.jar
             res/
           retention-days: 1
 
-  simulate:
+  audit:
     needs: [validate, forge]
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
-        batch: [0, 1, 2, 3]
+        include:
+          - label: green
+            opponent: 02-mono-green-ramp.dck
+            seed: 98101
+          - label: red
+            opponent: 03-mono-red-burn.dck
+            seed: 98201
+          - label: black
+            opponent: 04-mono-black-sacrifice.dck
+            seed: 98301
+          - label: blue
+            opponent: 05-mono-blue-tempo-control.dck
+            seed: 98401
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.11"
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -78,58 +76,52 @@ jobs:
       - run: sudo apt-get update && sudo apt-get install -y xvfb
       - uses: actions/download-artifact@v4
         with:
-          name: six-deck-forge-${{ env.FORGE_VERSION }}
-      - name: Run two orientations
+          name: verbose-audit-forge-${{ env.FORGE_VERSION }}
+      - name: Run six verbose games
         env:
-          BATCH: ${{ matrix.batch }}
+          LABEL: ${{ matrix.label }}
+          OPPONENT: ${{ matrix.opponent }}
+          SEED: ${{ matrix.seed }}
         run: |
-          start=$((BATCH * 2))
-          indices=$(seq "$start" "$((start + 1))")
-          python scripts/run_matchup_batch.py \
-            --matchup-indices $indices \
-            --config experiments/six-deck-v0.1/white-v0.3-targeted-192.json \
-            --forge-jar "forge-${FORGE_VERSION}.jar" \
-            --output "white-v03-batch-${BATCH}"
+          mkdir -p "verbose-${LABEL}"
+          timeout 240s xvfb-run -a java -jar "forge-${FORGE_VERSION}.jar" sim \
+            -d 01-mono-white-tokens.dck "$OPPONENT" -D "$DECK_DIR" \
+            -n 3 -c 120 -s "$SEED" \
+            > "verbose-${LABEL}/white-first.log" 2>&1
+          reverse_seed=$((SEED + 1))
+          timeout 240s xvfb-run -a java -jar "forge-${FORGE_VERSION}.jar" sim \
+            -d "$OPPONENT" 01-mono-white-tokens.dck -D "$DECK_DIR" \
+            -n 3 -c 120 -s "$reverse_seed" \
+            > "verbose-${LABEL}/white-second.log" 2>&1
+          test "$(grep -hF 'Game Result: Game' verbose-${LABEL}/*.log | wc -l)" = 6
+          grep -hF 'Simulation mode' verbose-${LABEL}/*.log >/dev/null
+          ! grep -Eiq 'NullPointerException|UnsupportedOperationException|Card not found|Unable to load deck|Forge exited' verbose-${LABEL}/*.log
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: white-v03-targeted-batch-${{ matrix.batch }}
-          path: white-v03-batch-${{ matrix.batch }}/
+          name: white-v03-verbose-${{ matrix.label }}
+          path: verbose-${{ matrix.label }}/
           if-no-files-found: error
           retention-days: 30
 
   report:
-    needs: simulate
+    needs: audit
     if: always()
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.11"
       - uses: actions/download-artifact@v4
         with:
-          pattern: white-v03-targeted-batch-*
-          path: all-results
-      - run: python scripts/aggregate_results.py all-results white-v03-targeted-results
-      - name: Enforce parse-completeness gate
+          pattern: white-v03-verbose-*
+          path: white-v03-verbose-audit
+      - name: Enforce verbose completeness
         run: |
-          python - <<'PY'
-          import csv
-          from pathlib import Path
-          rows = list(csv.DictReader(Path('white-v03-targeted-results/summary.csv').open()))
-          requested = sum(int(row['requested_games']) for row in rows)
-          parsed = sum(int(row['parsed_games']) for row in rows)
-          unparsed = sum(int(row['unparsed']) for row in rows)
-          assert len(rows) == 8, len(rows)
-          assert requested == 192, requested
-          assert parsed == 192, parsed
-          assert unparsed == 0, unparsed
-          PY
+          test "$(find white-v03-verbose-audit -name '*.log' | wc -l)" = 8
+          test "$(grep -rhF 'Game Result: Game' white-v03-verbose-audit | wc -l)" = 24
+          ! grep -rEiq 'NullPointerException|UnsupportedOperationException|Card not found|Unable to load deck|Forge exited' white-v03-verbose-audit
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: white-v03-targeted-results
-          path: white-v03-targeted-results/
+          name: white-v03-verbose-audit
+          path: white-v03-verbose-audit/
           if-no-files-found: error
           retention-days: 30
