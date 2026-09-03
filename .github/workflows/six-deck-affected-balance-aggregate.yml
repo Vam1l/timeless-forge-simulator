@@ -47,6 +47,17 @@ jobs:
 
           root = Path('affected-balance-432')
           result_re = re.compile(r'^Game Result: Game \d+ ended in \d+ ms\. Ai\(([12])\)-(.+) has won!$')
+          opponent_by_label = {
+              'white-green': 'Mono Green Ramp v0.1',
+              'white-red': 'Mono Red Burn v0.1',
+              'white-black': 'Mono Black Sacrifice v0.1',
+              'white-blue': 'Mono Blue Tempo Control v0.2 AI-safe',
+              'white-storm': 'Gruul Chatterstorm v0.1',
+              'blue-green': 'Mono Green Ramp v0.1',
+              'blue-red': 'Mono Red Burn v0.1',
+              'blue-black': 'Mono Black Sacrifice v0.1',
+              'blue-storm': 'Gruul Chatterstorm v0.1',
+          }
           rows = []
           seat = Counter()
           telemetry = Counter()
@@ -72,7 +83,9 @@ jobs:
               total = sum(winners.values())
               assert total == 48, (label, total)
               focus_wins = winners[focus]
-              opponent, opponent_wins = next((deck, wins) for deck, wins in winners.items() if deck != focus)
+              opponent = opponent_by_label[label]
+              opponent_wins = winners[opponent]
+              assert focus_wins + opponent_wins == total, (label, winners)
               rows.append({
                   'matchup': label,
                   'focus_deck': focus,
