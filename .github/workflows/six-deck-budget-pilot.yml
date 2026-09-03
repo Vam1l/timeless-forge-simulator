@@ -1,10 +1,10 @@
-name: White Tokens v0.3 Verbose Audit
+name: White v0.4 and Blue v0.2 AI-Safe Audit
 
 on:
   workflow_dispatch:
   push:
     branches:
-      - experiment/six-deck-budget-pilot-20260903
+      - experiment/six-deck-white-v04-blue-v02-20260903
 
 permissions:
   contents: read
@@ -19,13 +19,20 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Verify exact White v0.3 input
+      - name: Verify exact White v0.4 and Blue v0.2 inputs
         run: |
           grep -Fx '4 Garrison Cat' "$DECK_DIR/01-mono-white-tokens.dck"
           grep -Fx "2 Captain's Call" "$DECK_DIR/01-mono-white-tokens.dck"
+          grep -Fx '2 Fortify' "$DECK_DIR/01-mono-white-tokens.dck"
           ! grep -F 'Lunarch Veteran' "$DECK_DIR/01-mono-white-tokens.dck"
           ! grep -F 'Battle Screech' "$DECK_DIR/01-mono-white-tokens.dck"
+          ! grep -F 'Intangible Virtue' "$DECK_DIR/01-mono-white-tokens.dck"
           test "$(awk '/^[0-9]+ / {sum += $1} END {print sum}' "$DECK_DIR/01-mono-white-tokens.dck")" = 60
+          grep -Fx '4 Mental Note' "$DECK_DIR/05-mono-blue-tempo-control.dck"
+          grep -Fx '3 Frost Trickster' "$DECK_DIR/05-mono-blue-tempo-control.dck"
+          ! grep -F 'Thought Scour' "$DECK_DIR/05-mono-blue-tempo-control.dck"
+          ! grep -F 'Echoing Truth' "$DECK_DIR/05-mono-blue-tempo-control.dck"
+          test "$(awk '/^[0-9]+ / {sum += $1} END {print sum}' "$DECK_DIR/05-mono-blue-tempo-control.dck")" = 60
 
   forge:
     runs-on: ubuntu-latest
@@ -41,7 +48,7 @@ jobs:
           sha256sum "forge-${FORGE_VERSION}.jar"
       - uses: actions/upload-artifact@v4
         with:
-          name: verbose-audit-forge-${{ env.FORGE_VERSION }}
+          name: v04-ai-safe-forge-${{ env.FORGE_VERSION }}
           path: |
             forge-${{ env.FORGE_VERSION }}.jar
             res/
@@ -76,7 +83,7 @@ jobs:
       - run: sudo apt-get update && sudo apt-get install -y xvfb
       - uses: actions/download-artifact@v4
         with:
-          name: verbose-audit-forge-${{ env.FORGE_VERSION }}
+          name: v04-ai-safe-forge-${{ env.FORGE_VERSION }}
       - name: Run six verbose games
         env:
           LABEL: ${{ matrix.label }}
@@ -97,11 +104,11 @@ jobs:
             > "verbose-${LABEL}/white-second.log" 2>&1
           test "$(grep -hF 'Game Result: Game' verbose-${LABEL}/*.log | wc -l)" = 6
           grep -hF 'Simulation mode' verbose-${LABEL}/*.log >/dev/null
-          ! grep -Eiq 'NullPointerException|UnsupportedOperationException|Card not found|Unable to load deck|Forge exited' verbose-${LABEL}/*.log
+          ! grep -Eiq 'NullPointerException|UnsupportedOperationException|Card not found|Unable to load deck|No deck found|Could not load deck|match cannot start|Forge exited' verbose-${LABEL}/*.log
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: white-v03-verbose-${{ matrix.label }}
+          name: white-v04-blue-v02-verbose-${{ matrix.label }}
           path: verbose-${{ matrix.label }}/
           if-no-files-found: error
           retention-days: 30
@@ -113,17 +120,21 @@ jobs:
     steps:
       - uses: actions/download-artifact@v4
         with:
-          pattern: white-v03-verbose-*
-          path: white-v03-verbose-audit
+          pattern: white-v04-blue-v02-verbose-*
+          path: white-v04-blue-v02-verbose-audit
       - name: Enforce verbose completeness
         run: |
-          test "$(find white-v03-verbose-audit -name '*.log' | wc -l)" = 8
-          test "$(grep -rhF 'Game Result: Game' white-v03-verbose-audit | wc -l)" = 24
-          ! grep -rEiq 'NullPointerException|UnsupportedOperationException|Card not found|Unable to load deck|Forge exited' white-v03-verbose-audit
+          test "$(find white-v04-blue-v02-verbose-audit -name '*.log' | wc -l)" = 8
+          test "$(grep -rhF 'Game Result: Game' white-v04-blue-v02-verbose-audit | wc -l)" = 24
+          grep -rhF 'cast Mental Note' white-v04-blue-v02-verbose-audit/white-v04-blue-v02-verbose-blue/ >/dev/null
+          grep -rhF 'cast Frost Trickster' white-v04-blue-v02-verbose-audit/white-v04-blue-v02-verbose-blue/ >/dev/null
+          ! grep -rF 'cast Thought Scour' white-v04-blue-v02-verbose-audit
+          ! grep -rF 'cast Echoing Truth' white-v04-blue-v02-verbose-audit
+          ! grep -rEiq 'NullPointerException|UnsupportedOperationException|Card not found|Unable to load deck|No deck found|Could not load deck|match cannot start|Forge exited' white-v04-blue-v02-verbose-audit
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: white-v03-verbose-audit
-          path: white-v03-verbose-audit/
+          name: white-v04-blue-v02-verbose-audit
+          path: white-v04-blue-v02-verbose-audit/
           if-no-files-found: error
           retention-days: 30
