@@ -1,0 +1,176 @@
+name: Six-Deck v0.4 AI-Safe Affected Balance 432
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - experiment/six-deck-v04-blue-v02-balance-20260903
+
+permissions:
+  contents: read
+
+env:
+  FORGE_VERSION: "2.0.14"
+  JAVA_VERSION: "17"
+  DECK_DIR: experiments/six-deck-v0.1/decks
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Verify harness and exact candidate decks
+        run: |
+          python -m unittest discover -s tests -v
+          grep -Fx 'Name=Mono White Tokens v0.4' "$DECK_DIR/01-mono-white-tokens.dck"
+          grep -Fx '4 Garrison Cat' "$DECK_DIR/01-mono-white-tokens.dck"
+          grep -Fx "2 Captain's Call" "$DECK_DIR/01-mono-white-tokens.dck"
+          grep -Fx '2 Fortify' "$DECK_DIR/01-mono-white-tokens.dck"
+          ! grep -F 'Lunarch Veteran' "$DECK_DIR/01-mono-white-tokens.dck"
+          ! grep -F 'Battle Screech' "$DECK_DIR/01-mono-white-tokens.dck"
+          ! grep -F 'Intangible Virtue' "$DECK_DIR/01-mono-white-tokens.dck"
+          grep -Fx 'Name=Mono Blue Tempo Control v0.2 AI-safe' "$DECK_DIR/05-mono-blue-tempo-control.dck"
+          grep -Fx '4 Mental Note' "$DECK_DIR/05-mono-blue-tempo-control.dck"
+          grep -Fx '3 Frost Trickster' "$DECK_DIR/05-mono-blue-tempo-control.dck"
+          ! grep -F 'Thought Scour' "$DECK_DIR/05-mono-blue-tempo-control.dck"
+          ! grep -F 'Echoing Truth' "$DECK_DIR/05-mono-blue-tempo-control.dck"
+          python - <<'PY'
+          from pathlib import Path
+          for deck in sorted(Path('experiments/six-deck-v0.1/decks').glob('*.dck')):
+              total = sum(int(line.split(' ', 1)[0]) for line in deck.read_text().splitlines() if line[:1].isdigit())
+              assert total == 60, f'{deck}: {total} cards'
+          PY
+
+  forge:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download Forge
+        run: |
+          curl --fail --location --retry 3 \
+            "https://github.com/Card-Forge/forge/releases/download/forge-${FORGE_VERSION}/forge-installer-${FORGE_VERSION}.tar.bz2" \
+            --output forge.tar.bz2
+          tar -xjf forge.tar.bz2
+          cp "forge-gui-desktop-${FORGE_VERSION}-jar-with-dependencies.jar" "forge-${FORGE_VERSION}.jar"
+          test -s "forge-${FORGE_VERSION}.jar"
+          sha256sum "forge-${FORGE_VERSION}.jar"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: affected-balance-forge-${{ env.FORGE_VERSION }}
+          path: |
+            forge-${{ env.FORGE_VERSION }}.jar
+            res/
+          retention-days: 1
+
+  balance:
+    needs: [validate, forge]
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - label: white-green
+            deck_a: 01-mono-white-tokens.dck
+            deck_b: 02-mono-green-ramp.dck
+            seed: 101001
+          - label: white-red
+            deck_a: 01-mono-white-tokens.dck
+            deck_b: 03-mono-red-burn.dck
+            seed: 101101
+          - label: white-black
+            deck_a: 01-mono-white-tokens.dck
+            deck_b: 04-mono-black-sacrifice.dck
+            seed: 101201
+          - label: white-blue
+            deck_a: 01-mono-white-tokens.dck
+            deck_b: 05-mono-blue-tempo-control.dck
+            seed: 101301
+          - label: white-storm
+            deck_a: 01-mono-white-tokens.dck
+            deck_b: 06-gruul-chatterstorm.dck
+            seed: 101401
+          - label: blue-green
+            deck_a: 05-mono-blue-tempo-control.dck
+            deck_b: 02-mono-green-ramp.dck
+            seed: 102001
+          - label: blue-red
+            deck_a: 05-mono-blue-tempo-control.dck
+            deck_b: 03-mono-red-burn.dck
+            seed: 102101
+          - label: blue-black
+            deck_a: 05-mono-blue-tempo-control.dck
+            deck_b: 04-mono-black-sacrifice.dck
+            seed: 102201
+          - label: blue-storm
+            deck_a: 05-mono-blue-tempo-control.dck
+            deck_b: 06-gruul-chatterstorm.dck
+            seed: 102301
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: ${{ env.JAVA_VERSION }}
+      - run: sudo apt-get update && sudo apt-get install -y xvfb
+      - uses: actions/download-artifact@v4
+        with:
+          name: affected-balance-forge-${{ env.FORGE_VERSION }}
+      - name: Run 48 orientation-balanced verbose games
+        env:
+          LABEL: ${{ matrix.label }}
+          DECK_A: ${{ matrix.deck_a }}
+          DECK_B: ${{ matrix.deck_b }}
+          SEED: ${{ matrix.seed }}
+        run: |
+          mkdir -p "affected-${LABEL}"
+          mkdir -p "$HOME/.forge/decks/constructed"
+          cp "$DECK_DIR"/*.dck "$HOME/.forge/decks/constructed/"
+          timeout 1200s xvfb-run -a java -jar "forge-${FORGE_VERSION}.jar" sim \
+            -d "$DECK_A" "$DECK_B" -D "$DECK_DIR" \
+            -n 24 -c 120 -s "$SEED" \
+            > "affected-${LABEL}/a-first.log" 2>&1
+          reverse_seed=$((SEED + 1))
+          timeout 1200s xvfb-run -a java -jar "forge-${FORGE_VERSION}.jar" sim \
+            -d "$DECK_B" "$DECK_A" -D "$DECK_DIR" \
+            -n 24 -c 120 -s "$reverse_seed" \
+            > "affected-${LABEL}/a-second.log" 2>&1
+          test "$(grep -hF 'Game Result: Game' affected-${LABEL}/*.log | wc -l)" = 48
+          grep -hF 'Simulation mode' affected-${LABEL}/*.log >/dev/null
+          ! grep -Eiq 'NullPointerException|UnsupportedOperationException|Card not found|Unable to load deck|No deck found|Could not load deck|match cannot start|Forge exited' affected-${LABEL}/*.log
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: affected-balance-${{ matrix.label }}
+          path: affected-${{ matrix.label }}/
+          if-no-files-found: error
+          retention-days: 30
+
+  report:
+    needs: balance
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: affected-balance-*
+          path: affected-balance-432
+      - name: Enforce completeness and behavior gates
+        run: |
+          test "$(find affected-balance-432 -name '*.log' | wc -l)" = 18
+          test "$(grep -rhF 'Game Result: Game' affected-balance-432 | wc -l)" = 432
+          grep -rhF 'cast Mental Note' affected-balance-432 >/dev/null
+          grep -rhF 'cast Frost Trickster' affected-balance-432 >/dev/null
+          grep -rhF 'cast Fortify' affected-balance-432 >/dev/null
+          ! grep -rF 'cast Thought Scour' affected-balance-432
+          ! grep -rF 'cast Echoing Truth' affected-balance-432
+          ! grep -rEiq 'NullPointerException|UnsupportedOperationException|Card not found|Unable to load deck|No deck found|Could not load deck|match cannot start|Forge exited' affected-balance-432
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: six-deck-v04-blue-v02-affected-balance-432
+          path: affected-balance-432/
+          if-no-files-found: error
+          retention-days: 30
