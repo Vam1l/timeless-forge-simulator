@@ -1,0 +1,214 @@
+name: Five Mono Teaching Balance 480
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - experiment/six-deck-budget-pilot-20260903
+    paths:
+      - experiments/five-mono-teaching-v1/**
+      - .github/workflows/five-mono-teaching-balance.yml
+
+permissions:
+  contents: read
+
+env:
+  FORGE_VERSION: "2.0.14"
+  DECK_DIR: experiments/five-mono-teaching-v1/decks
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate exact teaching inputs
+        run: |
+          set -euo pipefail
+          test "$(find "$DECK_DIR" -name '*.dck' | wc -l)" = 5
+          for deck in "$DECK_DIR"/*.dck; do
+            test "$(awk '/^[0-9]+ / {sum += $1} END {print sum}' "$deck")" = 60
+          done
+          grep -Fx '1 Ajani Steadfast' "$DECK_DIR/01-mono-white-tokens-teaching.dck"
+          grep -Fx '1 Kabira Takedown' "$DECK_DIR/01-mono-white-tokens-teaching.dck"
+          grep -Fx '1 Vivien, Champion of the Wilds' "$DECK_DIR/02-mono-green-ramp-teaching.dck"
+          grep -Fx "1 Rogue's Passage" "$DECK_DIR/02-mono-green-ramp-teaching.dck"
+          grep -Fx '1 Chandra, Acolyte of Flame' "$DECK_DIR/03-mono-red-burn-teaching.dck"
+          grep -Fx '1 Ramunap Ruins' "$DECK_DIR/03-mono-red-burn-teaching.dck"
+          grep -Fx '1 Liliana, Waker of the Dead' "$DECK_DIR/04-mono-black-sacrifice-teaching.dck"
+          grep -Fx '1 Ifnir Deadlands' "$DECK_DIR/04-mono-black-sacrifice-teaching.dck"
+          grep -Fx '1 Jace, Architect of Thought' "$DECK_DIR/05-mono-blue-tempo-control-teaching.dck"
+          grep -Fx '2 Brainstorm' "$DECK_DIR/05-mono-blue-tempo-control-teaching.dck"
+          grep -Fx '2 Evolving Wilds' "$DECK_DIR/05-mono-blue-tempo-control-teaching.dck"
+
+  forge:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download Forge 2.0.14
+        run: |
+          curl --fail --location --retry 3 \
+            "https://github.com/Card-Forge/forge/releases/download/forge-${FORGE_VERSION}/forge-installer-${FORGE_VERSION}.tar.bz2" \
+            --output forge.tar.bz2
+          tar -xjf forge.tar.bz2
+          cp "forge-gui-desktop-${FORGE_VERSION}-jar-with-dependencies.jar" "forge-${FORGE_VERSION}.jar"
+          test -s "forge-${FORGE_VERSION}.jar"
+          sha256sum "forge-${FORGE_VERSION}.jar" > forge-sha256.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: five-mono-forge-${{ env.FORGE_VERSION }}
+          path: |
+            forge-${{ env.FORGE_VERSION }}.jar
+            forge-sha256.txt
+            res/
+          retention-days: 1
+
+  simulate:
+    needs: [validate, forge]
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      max-parallel: 10
+      matrix:
+        include:
+          - {label: 01-white-vs-green, a: 01-mono-white-tokens-teaching.dck, b: 02-mono-green-ramp-teaching.dck, seed: 91001}
+          - {label: 02-green-vs-white, a: 02-mono-green-ramp-teaching.dck, b: 01-mono-white-tokens-teaching.dck, seed: 91002}
+          - {label: 03-white-vs-red, a: 01-mono-white-tokens-teaching.dck, b: 03-mono-red-burn-teaching.dck, seed: 91003}
+          - {label: 04-red-vs-white, a: 03-mono-red-burn-teaching.dck, b: 01-mono-white-tokens-teaching.dck, seed: 91004}
+          - {label: 05-white-vs-black, a: 01-mono-white-tokens-teaching.dck, b: 04-mono-black-sacrifice-teaching.dck, seed: 91005}
+          - {label: 06-black-vs-white, a: 04-mono-black-sacrifice-teaching.dck, b: 01-mono-white-tokens-teaching.dck, seed: 91006}
+          - {label: 07-white-vs-blue, a: 01-mono-white-tokens-teaching.dck, b: 05-mono-blue-tempo-control-teaching.dck, seed: 91007}
+          - {label: 08-blue-vs-white, a: 05-mono-blue-tempo-control-teaching.dck, b: 01-mono-white-tokens-teaching.dck, seed: 91008}
+          - {label: 09-green-vs-red, a: 02-mono-green-ramp-teaching.dck, b: 03-mono-red-burn-teaching.dck, seed: 91009}
+          - {label: 10-red-vs-green, a: 03-mono-red-burn-teaching.dck, b: 02-mono-green-ramp-teaching.dck, seed: 91010}
+          - {label: 11-green-vs-black, a: 02-mono-green-ramp-teaching.dck, b: 04-mono-black-sacrifice-teaching.dck, seed: 91011}
+          - {label: 12-black-vs-green, a: 04-mono-black-sacrifice-teaching.dck, b: 02-mono-green-ramp-teaching.dck, seed: 91012}
+          - {label: 13-green-vs-blue, a: 02-mono-green-ramp-teaching.dck, b: 05-mono-blue-tempo-control-teaching.dck, seed: 91013}
+          - {label: 14-blue-vs-green, a: 05-mono-blue-tempo-control-teaching.dck, b: 02-mono-green-ramp-teaching.dck, seed: 91014}
+          - {label: 15-red-vs-black, a: 03-mono-red-burn-teaching.dck, b: 04-mono-black-sacrifice-teaching.dck, seed: 91015}
+          - {label: 16-black-vs-red, a: 04-mono-black-sacrifice-teaching.dck, b: 03-mono-red-burn-teaching.dck, seed: 91016}
+          - {label: 17-red-vs-blue, a: 03-mono-red-burn-teaching.dck, b: 05-mono-blue-tempo-control-teaching.dck, seed: 91017}
+          - {label: 18-blue-vs-red, a: 05-mono-blue-tempo-control-teaching.dck, b: 03-mono-red-burn-teaching.dck, seed: 91018}
+          - {label: 19-black-vs-blue, a: 04-mono-black-sacrifice-teaching.dck, b: 05-mono-blue-tempo-control-teaching.dck, seed: 91019}
+          - {label: 20-blue-vs-black, a: 05-mono-blue-tempo-control-teaching.dck, b: 04-mono-black-sacrifice-teaching.dck, seed: 91020}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - run: sudo apt-get update && sudo apt-get install -y xvfb
+      - uses: actions/download-artifact@v4
+        with:
+          name: five-mono-forge-${{ env.FORGE_VERSION }}
+      - name: Run 24 games
+        env:
+          LABEL: ${{ matrix.label }}
+          DECK_A: ${{ matrix.a }}
+          DECK_B: ${{ matrix.b }}
+          SEED: ${{ matrix.seed }}
+        run: |
+          set -euo pipefail
+          mkdir -p result "$HOME/.forge/decks/constructed"
+          cp "$DECK_DIR"/*.dck "$HOME/.forge/decks/constructed/"
+          timeout 600s xvfb-run -a java -jar "forge-${FORGE_VERSION}.jar" sim \
+            -d "$DECK_A" "$DECK_B" -D "$DECK_DIR" -n 24 -c 120 -s "$SEED" \
+            > "result/${LABEL}.log" 2>&1
+          test "$(grep -Fc 'Game Result: Game' "result/${LABEL}.log")" = 24
+          grep -F 'Simulation mode' "result/${LABEL}.log" >/dev/null
+          ! grep -Eiq 'NullPointerException|UnsupportedOperationException|Card not found|Unable to load deck|Forge exited' "result/${LABEL}.log"
+          printf '{"label":"%s","deck_a":"%s","deck_b":"%s","seed":%s,"requested":24}\n' \
+            "$LABEL" "$DECK_A" "$DECK_B" "$SEED" > "result/${LABEL}.json"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: five-mono-${{ matrix.label }}
+          path: result/
+          if-no-files-found: error
+          retention-days: 30
+
+  report:
+    needs: simulate
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: five-mono-*
+          path: all-results
+      - name: Aggregate and enforce integrity
+        run: |
+          python - <<'PY'
+          import csv, json, math, re
+          from collections import defaultdict
+          from pathlib import Path
+
+          root = Path('all-results')
+          rows = []
+          failures = []
+          for meta_path in sorted(root.rglob('*.json')):
+              meta = json.loads(meta_path.read_text())
+              log_path = next(meta_path.parent.glob('*.log'))
+              text = log_path.read_text(errors='replace')
+              results = re.findall(r'Game Result: Game .*? (Ai\([12]\)-.+?) has won!', text)
+              a_name = meta['deck_a'].removesuffix('.dck')
+              b_name = meta['deck_b'].removesuffix('.dck')
+              wins_a = sum('Ai(1)-' in winner for winner in results)
+              wins_b = sum('Ai(2)-' in winner for winner in results)
+              errors = re.findall(r'NullPointerException|UnsupportedOperationException|Card not found|Unable to load deck|Forge exited', text, re.I)
+              if len(results) != 24 or errors:
+                  failures.append({'label': meta['label'], 'results': len(results), 'errors': errors})
+              rows.append({**meta, 'deck_a': a_name, 'deck_b': b_name, 'wins_a': wins_a, 'wins_b': wins_b,
+                           'draws': 24-len(results), 'unparsed': 24-len(results), 'log': str(log_path)})
+
+          if len(rows) != 20 or failures:
+              raise SystemExit(f'INTEGRITY FAILURE rows={len(rows)} failures={failures}')
+
+          names = {
+              '01-mono-white-tokens-teaching': 'White',
+              '02-mono-green-ramp-teaching': 'Green',
+              '03-mono-red-burn-teaching': 'Red',
+              '04-mono-black-sacrifice-teaching': 'Black',
+              '05-mono-blue-tempo-control-teaching': 'Blue',
+          }
+          pair = defaultdict(lambda: defaultdict(int))
+          totals = defaultdict(lambda: [0, 0])
+          for r in rows:
+              a, b = names[r['deck_a']], names[r['deck_b']]
+              pair[(a,b)][a] += r['wins_a']; pair[(a,b)][b] += r['wins_b']
+              totals[a][0] += r['wins_a']; totals[a][1] += 24
+              totals[b][0] += r['wins_b']; totals[b][1] += 24
+
+          # Combine orientations under unordered pairs.
+          combined = defaultdict(lambda: defaultdict(int))
+          for (a,b), wins in pair.items():
+              key = tuple(sorted((a,b)))
+              for deck, n in wins.items(): combined[key][deck] += n
+
+          order = ['White','Blue','Green','Red','Black']
+          matrix = {a: {} for a in order}
+          for a in order:
+              for b in order:
+                  if a == b: matrix[a][b] = None
+                  else:
+                      wins = combined[tuple(sorted((a,b)))][a]
+                      matrix[a][b] = wins / 48
+
+          with open('combined-results.csv','w',newline='') as f:
+              w=csv.DictWriter(f,fieldnames=rows[0].keys()); w.writeheader(); w.writerows(rows)
+          Path('matrix.json').write_text(json.dumps({'games':480,'games_per_pair':48,'matrix':matrix,'totals':totals},indent=2))
+          print('INTEGRITY PASS: 20 orientation logs, 480/480 parsed games, zero flagged errors')
+          print('ROW WIN-RATE MATRIX (48 games per matchup)')
+          print('Deck\t'+'\t'.join(order)+'\tOverall')
+          for a in order:
+              cells=['—' if matrix[a][b] is None else f'{matrix[a][b]*100:.1f}%' for b in order]
+              print(a+'\t'+'\t'.join(cells)+f'\t{totals[a][0]/totals[a][1]*100:.1f}%')
+          PY
+          cat matrix.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: five-mono-teaching-balance-480
+          path: |
+            all-results/
+            combined-results.csv
+            matrix.json
+          retention-days: 30
