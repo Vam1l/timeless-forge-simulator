@@ -1,0 +1,180 @@
+name: Black v2 and Green v2 Targeted Balance 240
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - experiment/six-deck-budget-pilot-20260903
+    paths:
+      - experiments/five-mono-teaching-v2/**
+      - .github/workflows/two-deck-targeted-balance.yml
+
+permissions:
+  contents: read
+
+env:
+  FORGE_VERSION: "2.0.14"
+  V1_DIR: experiments/five-mono-teaching-v1/decks
+  V2_DIR: experiments/five-mono-teaching-v2/decks
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate exact inputs
+        run: |
+          set -euo pipefail
+          for deck in "$V1_DIR"/*.dck "$V2_DIR"/*.dck; do
+            test "$(awk '/^[0-9]+ / {sum += $1} END {print sum}' "$deck")" = 60
+          done
+          grep -Fx '2 Falkenrath Noble' "$V2_DIR/04-mono-black-sacrifice-teaching-v2.dck"
+          grep -Fx '2 Serrated Scorpion' "$V2_DIR/04-mono-black-sacrifice-teaching-v2.dck"
+          grep -Fx '2 Young Wolf' "$V2_DIR/02-mono-green-ramp-teaching-v2.dck"
+          grep -Fx '2 Beanstalk Giant' "$V2_DIR/02-mono-green-ramp-teaching-v2.dck"
+          grep -Fx '2 Greater Tanuki' "$V2_DIR/02-mono-green-ramp-teaching-v2.dck"
+          ! grep -F 'Affectionate Indrik' "$V2_DIR/02-mono-green-ramp-teaching-v2.dck"
+          grep -Fx '2 Brainstorm' "$V1_DIR/05-mono-blue-tempo-control-teaching.dck"
+          grep -Fx '4 Mental Note' "$V1_DIR/05-mono-blue-tempo-control-teaching.dck"
+
+  forge:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download stock Forge
+        run: |
+          curl --fail --location --retry 3 \
+            "https://github.com/Card-Forge/forge/releases/download/forge-${FORGE_VERSION}/forge-installer-${FORGE_VERSION}.tar.bz2" \
+            --output forge.tar.bz2
+          tar -xjf forge.tar.bz2
+          cp "forge-gui-desktop-${FORGE_VERSION}-jar-with-dependencies.jar" "forge-${FORGE_VERSION}.jar"
+          test -s "forge-${FORGE_VERSION}.jar"
+          sha256sum "forge-${FORGE_VERSION}.jar" > forge-sha256.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: stock-forge-${{ env.FORGE_VERSION }}
+          path: |
+            forge-${{ env.FORGE_VERSION }}.jar
+            forge-sha256.txt
+            res/
+          retention-days: 1
+
+  simulate:
+    needs: [validate, forge]
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      max-parallel: 10
+      matrix:
+        include:
+          - {label: 01-black-vs-white, a: 04-mono-black-sacrifice-teaching-v2.dck, b: 01-mono-white-tokens-teaching.dck, seed: 92001}
+          - {label: 02-white-vs-black, a: 01-mono-white-tokens-teaching.dck, b: 04-mono-black-sacrifice-teaching-v2.dck, seed: 92002}
+          - {label: 03-black-vs-green, a: 04-mono-black-sacrifice-teaching-v2.dck, b: 02-mono-green-ramp-teaching-v2.dck, seed: 92003}
+          - {label: 04-green-vs-black, a: 02-mono-green-ramp-teaching-v2.dck, b: 04-mono-black-sacrifice-teaching-v2.dck, seed: 92004}
+          - {label: 05-black-vs-red, a: 04-mono-black-sacrifice-teaching-v2.dck, b: 03-mono-red-burn-teaching.dck, seed: 92005}
+          - {label: 06-red-vs-black, a: 03-mono-red-burn-teaching.dck, b: 04-mono-black-sacrifice-teaching-v2.dck, seed: 92006}
+          - {label: 07-green-vs-red, a: 02-mono-green-ramp-teaching-v2.dck, b: 03-mono-red-burn-teaching.dck, seed: 92007}
+          - {label: 08-red-vs-green, a: 03-mono-red-burn-teaching.dck, b: 02-mono-green-ramp-teaching-v2.dck, seed: 92008}
+          - {label: 09-green-vs-blue, a: 02-mono-green-ramp-teaching-v2.dck, b: 05-mono-blue-tempo-control-teaching.dck, seed: 92009}
+          - {label: 10-blue-vs-green, a: 05-mono-blue-tempo-control-teaching.dck, b: 02-mono-green-ramp-teaching-v2.dck, seed: 92010}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - run: sudo apt-get update && sudo apt-get install -y xvfb
+      - uses: actions/download-artifact@v4
+        with:
+          name: stock-forge-${{ env.FORGE_VERSION }}
+      - name: Run 24 verbose games
+        env:
+          LABEL: ${{ matrix.label }}
+          DECK_A: ${{ matrix.a }}
+          DECK_B: ${{ matrix.b }}
+          SEED: ${{ matrix.seed }}
+        run: |
+          set -euo pipefail
+          mkdir -p combined-decks result "$HOME/.forge/decks/constructed"
+          cp "$V1_DIR"/*.dck combined-decks/
+          cp "$V2_DIR"/*.dck combined-decks/
+          cp combined-decks/*.dck "$HOME/.forge/decks/constructed/"
+          timeout 600s xvfb-run -a java -jar "forge-${FORGE_VERSION}.jar" sim \
+            -d "$DECK_A" "$DECK_B" -D combined-decks -n 24 -c 120 -s "$SEED" \
+            > "result/${LABEL}.log" 2>&1
+          test "$(grep -Fc 'Game Result: Game' "result/${LABEL}.log")" = 24
+          grep -F 'Simulation mode' "result/${LABEL}.log" >/dev/null
+          ! grep -Eiq 'NullPointerException|UnsupportedOperationException|Card not found|Unable to load deck|Forge exited' "result/${LABEL}.log"
+          printf '{"label":"%s","deck_a":"%s","deck_b":"%s","seed":%s,"requested":24}\n' \
+            "$LABEL" "$DECK_A" "$DECK_B" "$SEED" > "result/${LABEL}.json"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: targeted-${{ matrix.label }}
+          path: result/
+          if-no-files-found: error
+          retention-days: 30
+
+  report:
+    needs: simulate
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: targeted-*
+          path: targeted-results
+      - name: Aggregate and enforce integrity
+        run: |
+          python - <<'PY'
+          import json, re
+          from collections import defaultdict
+          from pathlib import Path
+
+          root = Path('targeted-results')
+          rows, failures = [], []
+          for meta_path in sorted(root.glob('targeted-*/*.json')):
+              meta = json.loads(meta_path.read_text())
+              logs = list(meta_path.parent.glob('*.log'))
+              if len(logs) != 1:
+                  failures.append({'label': meta['label'], 'logs': len(logs)})
+                  continue
+              text = logs[0].read_text(errors='replace')
+              results = re.findall(r'Game Result: Game .*? (Ai\([12]\)-.+?) has won!', text)
+              errors = re.findall(r'NullPointerException|UnsupportedOperationException|Card not found|Unable to load deck|Forge exited', text, re.I)
+              rows.append({**meta, 'wins_a': sum('Ai(1)-' in x for x in results),
+                           'wins_b': sum('Ai(2)-' in x for x in results), 'parsed': len(results)})
+              if len(results) != 24 or errors:
+                  failures.append({'label': meta['label'], 'parsed': len(results), 'errors': errors})
+          if len(rows) != 10 or failures:
+              raise SystemExit(f'INTEGRITY FAILURE rows={len(rows)} failures={failures}')
+
+          short = {
+              '01-mono-white-tokens-teaching.dck':'White',
+              '02-mono-green-ramp-teaching-v2.dck':'Green v2',
+              '03-mono-red-burn-teaching.dck':'Red',
+              '04-mono-black-sacrifice-teaching-v2.dck':'Black v2',
+              '05-mono-blue-tempo-control-teaching.dck':'Blue',
+          }
+          combined = defaultdict(lambda: defaultdict(int))
+          for row in rows:
+              a, b = short[row['deck_a']], short[row['deck_b']]
+              key = tuple(sorted((a,b)))
+              combined[key][a] += row['wins_a']; combined[key][b] += row['wins_b']
+          output = []
+          for key in sorted(combined):
+              a,b=key; output.append({'matchup':f'{a} vs {b}',a:a,'wins_a':combined[key][a],
+                                      'rate_a':combined[key][a]/48,b:b,'wins_b':combined[key][b],
+                                      'rate_b':combined[key][b]/48,'games':48})
+          Path('targeted-summary.json').write_text(json.dumps({'games':240,'results':output},indent=2))
+          print('INTEGRITY PASS: 10 orientation logs, 240/240 parsed games, zero flagged errors')
+          print(json.dumps(output,indent=2))
+          PY
+          cat targeted-summary.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: black-green-v2-targeted-240
+          path: |
+            targeted-results/
+            targeted-summary.json
+          retention-days: 30
