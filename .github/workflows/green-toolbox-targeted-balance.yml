@@ -1,0 +1,173 @@
+name: Green Toolbox Targeted Balance 144
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - experiment/six-deck-budget-pilot-20260903
+    paths:
+      - experiments/five-mono-teaching-v2/decks/02-mono-green-ramp-teaching-v2.dck
+      - .github/workflows/green-toolbox-targeted-balance.yml
+
+permissions:
+  contents: read
+
+env:
+  FORGE_VERSION: "2.0.14"
+  V1_DIR: experiments/five-mono-teaching-v1/decks
+  V2_DIR: experiments/five-mono-teaching-v2/decks
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate exact inputs
+        run: |
+          set -euo pipefail
+          green="$V2_DIR/02-mono-green-ramp-teaching-v2.dck"
+          test "$(awk '/^[0-9]+ / {sum += $1} END {print sum}' "$green")" = 60
+          grep -Fx '4 Llanowar Elves' "$green"
+          grep -Fx '2 Llanowar Visionary' "$green"
+          grep -Fx '2 Beanstalk Giant' "$green"
+          grep -Fx '2 Reclamation Sage' "$green"
+          grep -Fx '2 Fierce Empath' "$green"
+          grep -Fx '1 Arbor Colossus' "$green"
+          grep -Fx '1 Eldrazi Devastator' "$green"
+          ! grep -Eq 'Wild Growth|Nest Invader|Jewel Thief|Young Wolf|Greater Tanuki' "$green"
+
+  forge:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download stock Forge
+        run: |
+          curl --fail --location --retry 3 \
+            "https://github.com/Card-Forge/forge/releases/download/forge-${FORGE_VERSION}/forge-installer-${FORGE_VERSION}.tar.bz2" \
+            --output forge.tar.bz2
+          tar -xjf forge.tar.bz2
+          cp "forge-gui-desktop-${FORGE_VERSION}-jar-with-dependencies.jar" "forge-${FORGE_VERSION}.jar"
+          test -s "forge-${FORGE_VERSION}.jar"
+          sha256sum "forge-${FORGE_VERSION}.jar" > forge-sha256.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: green-toolbox-stock-forge-${{ env.FORGE_VERSION }}
+          path: |
+            forge-${{ env.FORGE_VERSION }}.jar
+            forge-sha256.txt
+            res/
+          retention-days: 1
+
+  simulate:
+    needs: [validate, forge]
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      max-parallel: 6
+      matrix:
+        include:
+          - {label: 01-green-vs-black, a: 02-mono-green-ramp-teaching-v2.dck, b: 04-mono-black-sacrifice-teaching-v2.dck, seed: 94001}
+          - {label: 02-black-vs-green, a: 04-mono-black-sacrifice-teaching-v2.dck, b: 02-mono-green-ramp-teaching-v2.dck, seed: 94002}
+          - {label: 03-green-vs-red, a: 02-mono-green-ramp-teaching-v2.dck, b: 03-mono-red-burn-teaching.dck, seed: 94003}
+          - {label: 04-red-vs-green, a: 03-mono-red-burn-teaching.dck, b: 02-mono-green-ramp-teaching-v2.dck, seed: 94004}
+          - {label: 05-green-vs-blue, a: 02-mono-green-ramp-teaching-v2.dck, b: 05-mono-blue-tempo-control-teaching.dck, seed: 94005}
+          - {label: 06-blue-vs-green, a: 05-mono-blue-tempo-control-teaching.dck, b: 02-mono-green-ramp-teaching-v2.dck, seed: 94006}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - run: sudo apt-get update && sudo apt-get install -y xvfb
+      - uses: actions/download-artifact@v4
+        with:
+          name: green-toolbox-stock-forge-${{ env.FORGE_VERSION }}
+      - name: Run 24 verbose games
+        env:
+          LABEL: ${{ matrix.label }}
+          DECK_A: ${{ matrix.a }}
+          DECK_B: ${{ matrix.b }}
+          SEED: ${{ matrix.seed }}
+        run: |
+          set -euo pipefail
+          mkdir -p combined-decks result "$HOME/.forge/decks/constructed"
+          cp "$V1_DIR"/*.dck combined-decks/
+          cp "$V2_DIR"/*.dck combined-decks/
+          cp combined-decks/*.dck "$HOME/.forge/decks/constructed/"
+          timeout 600s xvfb-run -a java -jar "forge-${FORGE_VERSION}.jar" sim \
+            -d "$DECK_A" "$DECK_B" -D combined-decks -n 24 -c 120 -s "$SEED" \
+            > "result/${LABEL}.log" 2>&1
+          test "$(grep -Fc 'Game Result: Game' "result/${LABEL}.log")" = 24
+          grep -F 'Simulation mode' "result/${LABEL}.log" >/dev/null
+          ! grep -Eiq 'NullPointerException|UnsupportedOperationException|Card not found|Unable to load deck|Forge exited' "result/${LABEL}.log"
+          printf '{"label":"%s","deck_a":"%s","deck_b":"%s","seed":%s,"requested":24}\n' \
+            "$LABEL" "$DECK_A" "$DECK_B" "$SEED" > "result/${LABEL}.json"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: green-toolbox-${{ matrix.label }}
+          path: result/
+          if-no-files-found: error
+          retention-days: 30
+
+  report:
+    needs: simulate
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: green-toolbox-0*
+          path: targeted-results
+      - name: Aggregate and enforce integrity
+        run: |
+          python - <<'PY'
+          import json, re
+          from collections import defaultdict
+          from pathlib import Path
+
+          rows, failures = [], []
+          for meta_path in sorted(Path('targeted-results').glob('green-toolbox-*/*.json')):
+              meta = json.loads(meta_path.read_text())
+              logs = list(meta_path.parent.glob('*.log'))
+              if len(logs) != 1:
+                  failures.append({'label': meta['label'], 'logs': len(logs)})
+                  continue
+              text = logs[0].read_text(errors='replace')
+              results = re.findall(r'Game Result: Game .*? (Ai\([12]\)-.+?) has won!', text)
+              errors = re.findall(r'NullPointerException|UnsupportedOperationException|Card not found|Unable to load deck|Forge exited', text, re.I)
+              rows.append({**meta, 'wins_a': sum('Ai(1)-' in x for x in results),
+                           'wins_b': sum('Ai(2)-' in x for x in results), 'parsed': len(results)})
+              if len(results) != 24 or errors:
+                  failures.append({'label': meta['label'], 'parsed': len(results), 'errors': errors})
+          if len(rows) != 6 or failures:
+              raise SystemExit(f'INTEGRITY FAILURE rows={len(rows)} failures={failures}')
+
+          short = {
+              '02-mono-green-ramp-teaching-v2.dck':'Green toolbox',
+              '03-mono-red-burn-teaching.dck':'Red',
+              '04-mono-black-sacrifice-teaching-v2.dck':'Black v2',
+              '05-mono-blue-tempo-control-teaching.dck':'Blue',
+          }
+          combined = defaultdict(lambda: defaultdict(int))
+          for row in rows:
+              a, b = short[row['deck_a']], short[row['deck_b']]
+              key = tuple(sorted((a,b)))
+              combined[key][a] += row['wins_a']; combined[key][b] += row['wins_b']
+          output = []
+          for key in sorted(combined):
+              a,b=key
+              output.append({'matchup':f'{a} vs {b}', a:a, 'wins_a':combined[key][a],
+                             'rate_a':combined[key][a]/48, b:b, 'wins_b':combined[key][b],
+                             'rate_b':combined[key][b]/48, 'games':48})
+          Path('green-toolbox-summary.json').write_text(json.dumps({'games':144,'results':output},indent=2))
+          print('INTEGRITY PASS: 6 orientation logs, 144/144 parsed games, zero flagged errors')
+          print(json.dumps(output,indent=2))
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: green-toolbox-targeted-144
+          path: |
+            targeted-results/
+            green-toolbox-summary.json
+          retention-days: 30
