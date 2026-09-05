@@ -1,23 +1,26 @@
 [metadata]
-Name=White Weenie
+Name=Mono-White Tokens ETB-Convoke
 
 [Main]
-4 Ardent Recruit
-4 Court Homunculus
+1 Ajani Steadfast
+1 Tocasia's Welcome
+1 Angel of Invention
+2 Goldnight Commander
+2 Mentor of the Meek
+2 Conclave Tribunal
+2 Devouring Light
+2 Kabira Takedown // Kabira Plateau
 4 Novice Inspector
 4 Kor Skyfisher
-2 Porcelain Legionnaire
-2 Leonardo, Big Brother
-2 Anafenza, Kin-Tree Spirit
-3 Tax Collector
-1 Benalish Marshal
-3 Thraben Charm
-3 Journey to Nowhere
-3 Battle Screech
-3 Ramosian Rally
-2 Prismatic Strands
-1 Bonesplitter
-4 Ancient Den
-15 Plains
+3 Inspiring Overseer
+2 Attended Knight
+2 Doomed Traveler
+2 Suture Priest
+4 Raise the Alarm
+3 Gather the Townsfolk
+2 Battle Screech
+2 Triplicate Spirits
+1 Fortify
+18 Plains
 
 [Sideboard]
