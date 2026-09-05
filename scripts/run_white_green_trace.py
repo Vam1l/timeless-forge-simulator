@@ -52,6 +52,7 @@ def parse(log: Path, orientation: str) -> list[dict]:
     board = {WHITE: Counter(), GREEN: Counter()}
     life = {WHITE: 20, GREEN: 20}
     turn = 0
+    phase = None
     last_cast: dict[str, tuple[str, str]] = {}
     for raw in log.read_text(encoding="utf-8").splitlines():
         if match := re.match(r"Turn: Turn (\d+) \((.+)\)", raw):
@@ -62,29 +63,33 @@ def parse(log: Path, orientation: str) -> list[dict]:
                 current["turns"].append({"turn": turn, "active": active,
                                          "start": {WHITE: state(board, life, WHITE), GREEN: state(board, life, GREEN)}})
             continue
-        if current is None:
-            continue
         if match := re.match(r"Mulligan: (.+) has kept a hand of (\d+) cards", raw):
+            if current is None:
+                current = {"orientation": orientation, "events": [], "turns": [], "mulligans": {}, "winner": None}
             who = player(match.group(1))
             if who:
                 current["mulligans"][who] = int(match.group(2))
+        if current is None:
+            continue
+        if match := re.match(r"Phase: .+?'s (.+)", raw):
+            phase = match.group(1)
         if match := re.match(r"Land: (.+) played (.+?) \(\d+\)", raw):
             who, card = player(match.group(1)), match.group(2)
             if who:
                 board[who][card] += 1
-                current["events"].append({"type": "land", "turn": turn, "controller": who, "card": card})
+                current["events"].append({"type": "land", "turn": turn, "phase": phase, "controller": who, "card": card})
         if match := re.match(r"Add To Stack: (.+) cast (.+?)(?: targeting (.+))?$", raw):
             who, card, targets = player(match.group(1)), match.group(2), match.group(3)
             if who:
                 last_cast[card] = (who, card)
-                current["events"].append({"type": "cast", "turn": turn, "controller": who, "card": card, "targets": targets})
+                current["events"].append({"type": "cast", "turn": turn, "phase": phase, "controller": who, "card": card, "targets": targets})
         if match := re.match(r"Resolve Stack: (.+?)(?: \(\d+\))?(?: -|$)", raw):
             card = match.group(1)
             if card in last_cast:
                 who, _ = last_cast[card]
                 if card in CREATURES or card in {"Colossal Majesty", "Tocasia's Welcome", "Conclave Tribunal", "Ajani Steadfast", "Vivien, Champion of the Wilds"}:
                     board[who][card] += 1
-                current["events"].append({"type": "resolve", "turn": turn, "controller": who, "card": card})
+                current["events"].append({"type": "resolve", "turn": turn, "phase": phase, "controller": who, "card": card})
         if match := re.match(r"Zone Change: (.+?) \(\d+\) was put into (.+?) from Battlefield", raw):
             card, zone = match.group(1), match.group(2)
             for who in (WHITE, GREEN):
@@ -92,15 +97,15 @@ def parse(log: Path, orientation: str) -> list[dict]:
                     board[who][card] -= 1
                     if not board[who][card]:
                         del board[who][card]
-                    current["events"].append({"type": "removed", "turn": turn, "controller": who, "card": card, "zone": zone})
+                    current["events"].append({"type": "removed", "turn": turn, "phase": phase, "controller": who, "card": card, "zone": zone})
                     break
         if match := re.match(r"Life: Life: (.+) (-?\d+) > (-?\d+)", raw):
             who = player(match.group(1))
             if who:
                 life[who] = int(match.group(3))
-                current["events"].append({"type": "life", "turn": turn, "controller": who, "from": int(match.group(2)), "to": life[who]})
+                current["events"].append({"type": "life", "turn": turn, "phase": phase, "controller": who, "from": int(match.group(2)), "to": life[who]})
         if raw.startswith("Combat:"):
-            current["events"].append({"type": "combat", "turn": turn, "detail": raw[8:]})
+            current["events"].append({"type": "combat", "turn": turn, "phase": phase, "detail": raw[8:]})
         if match := re.match(r"Game Result: Game (\d+) ended.*? (.+?) has won!", raw):
             current["game"] = int(match.group(1))
             current["winner"] = player(match.group(2))
