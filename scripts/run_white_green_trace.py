@@ -111,15 +111,17 @@ def parse(log: Path, orientation: str) -> list[dict]:
     return games
 
 
-def run(jar: Path, first: str, second: str, games: int, log: Path) -> None:
+def run(jar: Path, first: str, second: str, games: int, seed: int, log: Path) -> None:
     constructed = Path.home() / ".forge" / "decks" / "constructed"
     constructed.mkdir(parents=True, exist_ok=True)
     for filename in (first, second):
         shutil.copy2(DECKS / filename, constructed / filename)
-    command = ["java", "-jar", str(jar), "sim", "-d", first, second, "-D", str(DECKS), "-n", str(games), "-c", "120"]
+    command = ["java", "-jar", str(jar), "sim", "-d", first, second, "-D", str(DECKS),
+               "-n", str(games), "-c", "120", "-s", str(seed)]
     if shutil.which("xvfb-run") and "DISPLAY" not in __import__("os").environ:
         command = ["xvfb-run", "-a"] + command
-    complete = subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, check=False)
+    complete = subprocess.run(command, cwd=jar.parent, stdout=subprocess.PIPE,
+                              stderr=subprocess.STDOUT, text=True, check=False)
     log.write_text(complete.stdout, encoding="utf-8")
     if complete.returncode:
         raise RuntimeError(complete.stdout[-4000:])
@@ -132,12 +134,12 @@ def main() -> None:
     parser.add_argument("--games-per-orientation", type=int, default=50)
     args = parser.parse_args()
     args.output.mkdir(parents=True, exist_ok=True)
-    plans = [("white-listed-first", "01-white-weenie.dck", "03-green-stompy.dck"),
-             ("green-listed-first", "03-green-stompy.dck", "01-white-weenie.dck")]
+    plans = [("white-listed-first", "01-white-weenie.dck", "03-green-stompy.dck", 97001),
+             ("green-listed-first", "03-green-stompy.dck", "01-white-weenie.dck", 97002)]
     all_games = []
-    for label, first, second in plans:
+    for label, first, second, seed in plans:
         log = args.output / f"{label}.log"
-        run(args.forge_jar, first, second, args.games_per_orientation, log)
+        run(args.forge_jar, first, second, args.games_per_orientation, seed, log)
         all_games.extend(parse(log, label))
     (args.output / "trace.json").write_text(json.dumps(all_games, indent=2) + "\n", encoding="utf-8")
     print(f"Wrote {len(all_games)} traced games to {args.output}")
