@@ -1,0 +1,23 @@
+{
+  "name": "Froganimator fair-slot confirmation",
+  "deck_dir": ".",
+  "games_preboard": 40,
+  "games_postboard": 0,
+  "clock_seconds": 120,
+  "matchups": [
+    {"name":"bilbo-vs-pure","deck_a":"froganimator-slots/slot-bilbo1.dck","deck_b":"froganimator-splits/pure-sultai.dck"},
+    {"name":"pure-vs-bilbo","deck_a":"froganimator-splits/pure-sultai.dck","deck_b":"froganimator-slots/slot-bilbo1.dck"},
+    {"name":"bilbo-vs-mardu","deck_a":"froganimator-slots/slot-bilbo1.dck","deck_b":"froganimator-splits/mardu-energy.dck"},
+    {"name":"mardu-vs-bilbo","deck_a":"froganimator-splits/mardu-energy.dck","deck_b":"froganimator-slots/slot-bilbo1.dck"},
+
+    {"name":"push3-vs-pure","deck_a":"froganimator-slots/slot-push3.dck","deck_b":"froganimator-splits/pure-sultai.dck"},
+    {"name":"pure-vs-push3","deck_a":"froganimator-splits/pure-sultai.dck","deck_b":"froganimator-slots/slot-push3.dck"},
+    {"name":"push3-vs-mardu","deck_a":"froganimator-slots/slot-push3.dck","deck_b":"froganimator-splits/mardu-energy.dck"},
+    {"name":"mardu-vs-push3","deck_a":"froganimator-splits/mardu-energy.dck","deck_b":"froganimator-slots/slot-push3.dck"},
+
+    {"name":"tamiyo-vs-pure","deck_a":"froganimator-splits/split-grief2.dck","deck_b":"froganimator-splits/pure-sultai.dck"},
+    {"name":"pure-vs-tamiyo","deck_a":"froganimator-splits/pure-sultai.dck","deck_b":"froganimator-splits/split-grief2.dck"},
+    {"name":"tamiyo-vs-mardu","deck_a":"froganimator-splits/split-grief2.dck","deck_b":"froganimator-splits/mardu-energy.dck"},
+    {"name":"mardu-vs-tamiyo","deck_a":"froganimator-splits/mardu-energy.dck","deck_b":"froganimator-splits/split-grief2.dck"}
+  ]
+}
