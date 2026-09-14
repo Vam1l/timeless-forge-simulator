@@ -1,0 +1,23 @@
+{
+  "name": "Froganimator combo confirmation",
+  "deck_dir": ".",
+  "games_preboard": 20,
+  "games_postboard": 0,
+  "clock_seconds": 120,
+  "matchups": [
+    {"name":"bilbo-vs-snt","deck_a":"froganimator-slots/slot-bilbo1.dck","deck_b":"froganimator-splits/show-and-tell.dck"},
+    {"name":"snt-vs-bilbo","deck_a":"froganimator-splits/show-and-tell.dck","deck_b":"froganimator-slots/slot-bilbo1.dck"},
+    {"name":"bilbo-vs-reanimator","deck_a":"froganimator-slots/slot-bilbo1.dck","deck_b":"froganimator-splits/reanimator.dck"},
+    {"name":"reanimator-vs-bilbo","deck_a":"froganimator-splits/reanimator.dck","deck_b":"froganimator-slots/slot-bilbo1.dck"},
+
+    {"name":"push3-vs-snt","deck_a":"froganimator-slots/slot-push3.dck","deck_b":"froganimator-splits/show-and-tell.dck"},
+    {"name":"snt-vs-push3","deck_a":"froganimator-splits/show-and-tell.dck","deck_b":"froganimator-slots/slot-push3.dck"},
+    {"name":"push3-vs-reanimator","deck_a":"froganimator-slots/slot-push3.dck","deck_b":"froganimator-splits/reanimator.dck"},
+    {"name":"reanimator-vs-push3","deck_a":"froganimator-splits/reanimator.dck","deck_b":"froganimator-slots/slot-push3.dck"},
+
+    {"name":"tamiyo-vs-snt","deck_a":"froganimator-splits/split-grief2.dck","deck_b":"froganimator-splits/show-and-tell.dck"},
+    {"name":"snt-vs-tamiyo","deck_a":"froganimator-splits/show-and-tell.dck","deck_b":"froganimator-splits/split-grief2.dck"},
+    {"name":"tamiyo-vs-reanimator","deck_a":"froganimator-splits/split-grief2.dck","deck_b":"froganimator-splits/reanimator.dck"},
+    {"name":"reanimator-vs-tamiyo","deck_a":"froganimator-splits/reanimator.dck","deck_b":"froganimator-splits/split-grief2.dck"}
+  ]
+}
