@@ -1,0 +1,23 @@
+{
+  "name": "Sultai Frog Reanimator split pilot",
+  "deck_dir": "..",
+  "games_preboard": 30,
+  "games_postboard": 0,
+  "clock_seconds": 120,
+  "matchups": [
+    {"name":"pure-vs-mardu","deck_a":"froganimator/sultai-pure.dck","deck_b":"mardu-energy.dck"},
+    {"name":"mardu-vs-pure","deck_a":"mardu-energy.dck","deck_b":"froganimator/sultai-pure.dck"},
+    {"name":"221-vs-mardu","deck_a":"froganimator/sultai-reanimator-221.dck","deck_b":"mardu-energy.dck"},
+    {"name":"mardu-vs-221","deck_a":"mardu-energy.dck","deck_b":"froganimator/sultai-reanimator-221.dck"},
+    {"name":"331-vs-mardu","deck_a":"froganimator/sultai-reanimator-331.dck","deck_b":"mardu-energy.dck"},
+    {"name":"mardu-vs-331","deck_a":"mardu-energy.dck","deck_b":"froganimator/sultai-reanimator-331.dck"},
+    {"name":"441-vs-mardu","deck_a":"froganimator/sultai-reanimator-441.dck","deck_b":"mardu-energy.dck"},
+    {"name":"mardu-vs-441","deck_a":"mardu-energy.dck","deck_b":"froganimator/sultai-reanimator-441.dck"},
+    {"name":"221-vs-pure","deck_a":"froganimator/sultai-reanimator-221.dck","deck_b":"froganimator/sultai-pure.dck"},
+    {"name":"pure-vs-221","deck_a":"froganimator/sultai-pure.dck","deck_b":"froganimator/sultai-reanimator-221.dck"},
+    {"name":"331-vs-pure","deck_a":"froganimator/sultai-reanimator-331.dck","deck_b":"froganimator/sultai-pure.dck"},
+    {"name":"pure-vs-331","deck_a":"froganimator/sultai-pure.dck","deck_b":"froganimator/sultai-reanimator-331.dck"},
+    {"name":"441-vs-pure","deck_a":"froganimator/sultai-reanimator-441.dck","deck_b":"froganimator/sultai-pure.dck"},
+    {"name":"pure-vs-441","deck_a":"froganimator/sultai-pure.dck","deck_b":"froganimator/sultai-reanimator-441.dck"}
+  ]
+}
