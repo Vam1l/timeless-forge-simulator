@@ -1,0 +1,17 @@
+{
+  "name": "Froganimator Grief decider",
+  "deck_dir": ".",
+  "games_preboard": 40,
+  "games_postboard": 0,
+  "clock_seconds": 120,
+  "matchups": [
+    {"name":"grief2-vs-pure","deck_a":"froganimator-splits/split-grief2.dck","deck_b":"froganimator-splits/pure-sultai.dck"},
+    {"name":"pure-vs-grief2","deck_a":"froganimator-splits/pure-sultai.dck","deck_b":"froganimator-splits/split-grief2.dck"},
+    {"name":"grief2-vs-mardu","deck_a":"froganimator-splits/split-grief2.dck","deck_b":"froganimator-splits/mardu-energy.dck"},
+    {"name":"mardu-vs-grief2","deck_a":"froganimator-splits/mardu-energy.dck","deck_b":"froganimator-splits/split-grief2.dck"},
+    {"name":"mixed12-vs-pure","deck_a":"froganimator-splits/split-mixed12.dck","deck_b":"froganimator-splits/pure-sultai.dck"},
+    {"name":"pure-vs-mixed12","deck_a":"froganimator-splits/pure-sultai.dck","deck_b":"froganimator-splits/split-mixed12.dck"},
+    {"name":"mixed12-vs-mardu","deck_a":"froganimator-splits/split-mixed12.dck","deck_b":"froganimator-splits/mardu-energy.dck"},
+    {"name":"mardu-vs-mixed12","deck_a":"froganimator-splits/mardu-energy.dck","deck_b":"froganimator-splits/split-mixed12.dck"}
+  ]
+}
