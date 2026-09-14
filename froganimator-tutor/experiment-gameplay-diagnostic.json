@@ -1,0 +1,26 @@
+{
+  "name":"Froganimator Tutor vs Push gameplay diagnostic",
+  "deck_dir":".",
+  "games_preboard":5,
+  "games_postboard":0,
+  "clock_seconds":120,
+  "matchups":[
+    {"name":"tutor-vs-pure","deck_a":"froganimator-splits/split-grief2.dck","deck_b":"froganimator-splits/pure-sultai.dck"},
+    {"name":"pure-vs-tutor","deck_a":"froganimator-splits/pure-sultai.dck","deck_b":"froganimator-splits/split-grief2.dck"},
+    {"name":"tutor-vs-mardu","deck_a":"froganimator-splits/split-grief2.dck","deck_b":"froganimator-splits/mardu-energy.dck"},
+    {"name":"mardu-vs-tutor","deck_a":"froganimator-splits/mardu-energy.dck","deck_b":"froganimator-splits/split-grief2.dck"},
+    {"name":"tutor-vs-snt","deck_a":"froganimator-splits/split-grief2.dck","deck_b":"froganimator-splits/show-and-tell.dck"},
+    {"name":"snt-vs-tutor","deck_a":"froganimator-splits/show-and-tell.dck","deck_b":"froganimator-splits/split-grief2.dck"},
+    {"name":"tutor-vs-reanimator","deck_a":"froganimator-splits/split-grief2.dck","deck_b":"froganimator-splits/reanimator.dck"},
+    {"name":"reanimator-vs-tutor","deck_a":"froganimator-splits/reanimator.dck","deck_b":"froganimator-splits/split-grief2.dck"},
+
+    {"name":"push-vs-pure","deck_a":"froganimator-tutor/tutor-push3.dck","deck_b":"froganimator-splits/pure-sultai.dck"},
+    {"name":"pure-vs-push","deck_a":"froganimator-splits/pure-sultai.dck","deck_b":"froganimator-tutor/tutor-push3.dck"},
+    {"name":"push-vs-mardu","deck_a":"froganimator-tutor/tutor-push3.dck","deck_b":"froganimator-splits/mardu-energy.dck"},
+    {"name":"mardu-vs-push","deck_a":"froganimator-splits/mardu-energy.dck","deck_b":"froganimator-tutor/tutor-push3.dck"},
+    {"name":"push-vs-snt","deck_a":"froganimator-tutor/tutor-push3.dck","deck_b":"froganimator-splits/show-and-tell.dck"},
+    {"name":"snt-vs-push","deck_a":"froganimator-splits/show-and-tell.dck","deck_b":"froganimator-tutor/tutor-push3.dck"},
+    {"name":"push-vs-reanimator","deck_a":"froganimator-tutor/tutor-push3.dck","deck_b":"froganimator-splits/reanimator.dck"},
+    {"name":"reanimator-vs-push","deck_a":"froganimator-splits/reanimator.dck","deck_b":"froganimator-tutor/tutor-push3.dck"}
+  ]
+}
