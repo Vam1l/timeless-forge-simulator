@@ -1,6 +1,6 @@
 {
   "name": "Sultai Frog Reanimator split pilot",
-  "deck_dir": "..",
+  "deck_dir": ".",
   "games_preboard": 30,
   "games_postboard": 0,
   "clock_seconds": 120,
