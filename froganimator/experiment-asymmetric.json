@@ -1,0 +1,17 @@
+{
+  "name": "Sultai Frog Reanimator asymmetric split pilot",
+  "deck_dir": ".",
+  "games_preboard": 20,
+  "games_postboard": 0,
+  "clock_seconds": 120,
+  "matchups": [
+    {"name":"231-vs-mardu","deck_a":"froganimator/sultai-reanimator-231.dck","deck_b":"mardu-energy.dck"},
+    {"name":"mardu-vs-231","deck_a":"mardu-energy.dck","deck_b":"froganimator/sultai-reanimator-231.dck"},
+    {"name":"231-vs-pure","deck_a":"froganimator/sultai-reanimator-231.dck","deck_b":"froganimator/sultai-pure.dck"},
+    {"name":"pure-vs-231","deck_a":"froganimator/sultai-pure.dck","deck_b":"froganimator/sultai-reanimator-231.dck"},
+    {"name":"321-vs-mardu","deck_a":"froganimator/sultai-reanimator-321.dck","deck_b":"mardu-energy.dck"},
+    {"name":"mardu-vs-321","deck_a":"mardu-energy.dck","deck_b":"froganimator/sultai-reanimator-321.dck"},
+    {"name":"321-vs-pure","deck_a":"froganimator/sultai-reanimator-321.dck","deck_b":"froganimator/sultai-pure.dck"},
+    {"name":"pure-vs-321","deck_a":"froganimator/sultai-pure.dck","deck_b":"froganimator/sultai-reanimator-321.dck"}
+  ]
+}
