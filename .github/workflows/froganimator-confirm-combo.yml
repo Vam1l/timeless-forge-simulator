@@ -1,0 +1,56 @@
+name: Froganimator Combo Confirmation
+
+on:
+  push:
+    branches:
+      - analysis/froganimator-confirmation
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  FORGE_VERSION: "2.0.14"
+  JAVA_VERSION: "17"
+
+jobs:
+  simulate:
+    strategy:
+      fail-fast: false
+      matrix:
+        candidate: [0,1,2]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: ${{ env.JAVA_VERSION }}
+      - run: sudo apt-get update && sudo apt-get install -y xvfb
+      - name: Download Forge
+        run: |
+          curl --fail --location --retry 3 \
+            "https://github.com/Card-Forge/forge/releases/download/forge-${FORGE_VERSION}/forge-installer-${FORGE_VERSION}.tar.bz2" \
+            --output forge.tar.bz2
+          tar -xjf forge.tar.bz2
+          cp "forge-gui-desktop-${FORGE_VERSION}-jar-with-dependencies.jar" "forge-${FORGE_VERSION}.jar"
+          test -s "forge-${FORGE_VERSION}.jar"
+      - name: Run combo confirmation
+        run: |
+          START=$(( ${{ matrix.candidate }} * 4 ))
+          END=$(( START + 3 ))
+          python scripts/run_matchup_batch.py \
+            --matchup-indices $START $((START+1)) $((START+2)) $END \
+            --config froganimator-slots/experiment-confirm-combo.json \
+            --forge-jar "forge-${FORGE_VERSION}.jar" \
+            --output "froganimator-confirm-combo-${{ matrix.candidate }}"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: froganimator-confirm-combo-${{ matrix.candidate }}
+          path: froganimator-confirm-combo-${{ matrix.candidate }}/
+          if-no-files-found: warn
+          retention-days: 30
