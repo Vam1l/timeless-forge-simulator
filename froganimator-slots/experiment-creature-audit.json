@@ -1,0 +1,44 @@
+{
+  "name": "Froganimator creature flex gameplay audit",
+  "deck_dir": ".",
+  "games_preboard": 5,
+  "games_postboard": 0,
+  "clock_seconds": 120,
+  "matchups": [
+    {"name":"tamiyo-vs-pure","deck_a":"froganimator-splits/split-grief2.dck","deck_b":"froganimator-splits/pure-sultai.dck"},
+    {"name":"pure-vs-tamiyo","deck_a":"froganimator-splits/pure-sultai.dck","deck_b":"froganimator-splits/split-grief2.dck"},
+    {"name":"tamiyo-vs-mardu","deck_a":"froganimator-splits/split-grief2.dck","deck_b":"froganimator-splits/mardu-energy.dck"},
+    {"name":"mardu-vs-tamiyo","deck_a":"froganimator-splits/mardu-energy.dck","deck_b":"froganimator-splits/split-grief2.dck"},
+    {"name":"tamiyo-vs-snt","deck_a":"froganimator-splits/split-grief2.dck","deck_b":"froganimator-splits/show-and-tell.dck"},
+    {"name":"snt-vs-tamiyo","deck_a":"froganimator-splits/show-and-tell.dck","deck_b":"froganimator-splits/split-grief2.dck"},
+    {"name":"tamiyo-vs-reanimator","deck_a":"froganimator-splits/split-grief2.dck","deck_b":"froganimator-splits/reanimator.dck"},
+    {"name":"reanimator-vs-tamiyo","deck_a":"froganimator-splits/reanimator.dck","deck_b":"froganimator-splits/split-grief2.dck"},
+
+    {"name":"bilbo-vs-pure","deck_a":"froganimator-slots/slot-bilbo1.dck","deck_b":"froganimator-splits/pure-sultai.dck"},
+    {"name":"pure-vs-bilbo","deck_a":"froganimator-splits/pure-sultai.dck","deck_b":"froganimator-slots/slot-bilbo1.dck"},
+    {"name":"bilbo-vs-mardu","deck_a":"froganimator-slots/slot-bilbo1.dck","deck_b":"froganimator-splits/mardu-energy.dck"},
+    {"name":"mardu-vs-bilbo","deck_a":"froganimator-splits/mardu-energy.dck","deck_b":"froganimator-slots/slot-bilbo1.dck"},
+    {"name":"bilbo-vs-snt","deck_a":"froganimator-slots/slot-bilbo1.dck","deck_b":"froganimator-splits/show-and-tell.dck"},
+    {"name":"snt-vs-bilbo","deck_a":"froganimator-splits/show-and-tell.dck","deck_b":"froganimator-slots/slot-bilbo1.dck"},
+    {"name":"bilbo-vs-reanimator","deck_a":"froganimator-slots/slot-bilbo1.dck","deck_b":"froganimator-splits/reanimator.dck"},
+    {"name":"reanimator-vs-bilbo","deck_a":"froganimator-splits/reanimator.dck","deck_b":"froganimator-slots/slot-bilbo1.dck"},
+
+    {"name":"bow4-vs-pure","deck_a":"froganimator-slots/slot-bowmasters4.dck","deck_b":"froganimator-splits/pure-sultai.dck"},
+    {"name":"pure-vs-bow4","deck_a":"froganimator-splits/pure-sultai.dck","deck_b":"froganimator-slots/slot-bowmasters4.dck"},
+    {"name":"bow4-vs-mardu","deck_a":"froganimator-slots/slot-bowmasters4.dck","deck_b":"froganimator-splits/mardu-energy.dck"},
+    {"name":"mardu-vs-bow4","deck_a":"froganimator-splits/mardu-energy.dck","deck_b":"froganimator-slots/slot-bowmasters4.dck"},
+    {"name":"bow4-vs-snt","deck_a":"froganimator-slots/slot-bowmasters4.dck","deck_b":"froganimator-splits/show-and-tell.dck"},
+    {"name":"snt-vs-bow4","deck_a":"froganimator-splits/show-and-tell.dck","deck_b":"froganimator-slots/slot-bowmasters4.dck"},
+    {"name":"bow4-vs-reanimator","deck_a":"froganimator-slots/slot-bowmasters4.dck","deck_b":"froganimator-splits/reanimator.dck"},
+    {"name":"reanimator-vs-bow4","deck_a":"froganimator-splits/reanimator.dck","deck_b":"froganimator-slots/slot-bowmasters4.dck"},
+
+    {"name":"oldbird-vs-pure","deck_a":"froganimator-slots/slot-oldbird1.dck","deck_b":"froganimator-splits/pure-sultai.dck"},
+    {"name":"pure-vs-oldbird","deck_a":"froganimator-splits/pure-sultai.dck","deck_b":"froganimator-slots/slot-oldbird1.dck"},
+    {"name":"oldbird-vs-mardu","deck_a":"froganimator-slots/slot-oldbird1.dck","deck_b":"froganimator-splits/mardu-energy.dck"},
+    {"name":"mardu-vs-oldbird","deck_a":"froganimator-splits/mardu-energy.dck","deck_b":"froganimator-slots/slot-oldbird1.dck"},
+    {"name":"oldbird-vs-snt","deck_a":"froganimator-slots/slot-oldbird1.dck","deck_b":"froganimator-splits/show-and-tell.dck"},
+    {"name":"snt-vs-oldbird","deck_a":"froganimator-splits/show-and-tell.dck","deck_b":"froganimator-slots/slot-oldbird1.dck"},
+    {"name":"oldbird-vs-reanimator","deck_a":"froganimator-slots/slot-oldbird1.dck","deck_b":"froganimator-splits/reanimator.dck"},
+    {"name":"reanimator-vs-oldbird","deck_a":"froganimator-splits/reanimator.dck","deck_b":"froganimator-slots/slot-oldbird1.dck"}
+  ]
+}
