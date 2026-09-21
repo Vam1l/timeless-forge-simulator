@@ -1,0 +1,89 @@
+{
+  "name": "BUG Froganimator vs Tempo Reanimator meta comparison 2026-09-21",
+  "deck_dir": ".",
+  "games_preboard": 40,
+  "games_postboard": 0,
+  "clock_seconds": 120,
+  "matchups": [
+    {
+      "name": "bug-vs-mardu",
+      "deck_a": "froganimator-splits/split-grief2.dck",
+      "deck_b": "froganimator-splits/mardu-energy.dck"
+    },
+    {
+      "name": "mardu-vs-bug",
+      "deck_a": "froganimator-splits/mardu-energy.dck",
+      "deck_b": "froganimator-splits/split-grief2.dck"
+    },
+    {
+      "name": "tempo-vs-mardu",
+      "deck_a": "froganimator-splits/reanimator.dck",
+      "deck_b": "froganimator-splits/mardu-energy.dck"
+    },
+    {
+      "name": "mardu-vs-tempo",
+      "deck_a": "froganimator-splits/mardu-energy.dck",
+      "deck_b": "froganimator-splits/reanimator.dck"
+    },
+    {
+      "name": "bug-vs-snt",
+      "deck_a": "froganimator-splits/split-grief2.dck",
+      "deck_b": "froganimator-splits/show-and-tell.dck"
+    },
+    {
+      "name": "snt-vs-bug",
+      "deck_a": "froganimator-splits/show-and-tell.dck",
+      "deck_b": "froganimator-splits/split-grief2.dck"
+    },
+    {
+      "name": "tempo-vs-snt",
+      "deck_a": "froganimator-splits/reanimator.dck",
+      "deck_b": "froganimator-splits/show-and-tell.dck"
+    },
+    {
+      "name": "snt-vs-tempo",
+      "deck_a": "froganimator-splits/show-and-tell.dck",
+      "deck_b": "froganimator-splits/reanimator.dck"
+    },
+    {
+      "name": "bug-vs-reanimator",
+      "deck_a": "froganimator-splits/split-grief2.dck",
+      "deck_b": "froganimator-splits/reanimator.dck"
+    },
+    {
+      "name": "reanimator-vs-bug",
+      "deck_a": "froganimator-splits/reanimator.dck",
+      "deck_b": "froganimator-splits/split-grief2.dck"
+    },
+    {
+      "name": "tempo-vs-reanimator-mirror",
+      "deck_a": "froganimator-splits/reanimator.dck",
+      "deck_b": "froganimator-splits/reanimator.dck"
+    },
+    {
+      "name": "reanimator-mirror-vs-tempo",
+      "deck_a": "froganimator-splits/reanimator.dck",
+      "deck_b": "froganimator-splits/reanimator.dck"
+    },
+    {
+      "name": "bug-vs-pure-sultai",
+      "deck_a": "froganimator-splits/split-grief2.dck",
+      "deck_b": "froganimator-splits/pure-sultai.dck"
+    },
+    {
+      "name": "pure-sultai-vs-bug",
+      "deck_a": "froganimator-splits/pure-sultai.dck",
+      "deck_b": "froganimator-splits/split-grief2.dck"
+    },
+    {
+      "name": "tempo-vs-pure-sultai",
+      "deck_a": "froganimator-splits/reanimator.dck",
+      "deck_b": "froganimator-splits/pure-sultai.dck"
+    },
+    {
+      "name": "pure-sultai-vs-tempo",
+      "deck_a": "froganimator-splits/pure-sultai.dck",
+      "deck_b": "froganimator-splits/reanimator.dck"
+    }
+  ]
+}
