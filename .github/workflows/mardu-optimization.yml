@@ -17,6 +17,10 @@ jobs:
   simulate:
     runs-on: ubuntu-latest
     timeout-minutes: 180
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [0, 1, 2, 3, 4, 5, 6, 7, 8]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -56,20 +60,23 @@ jobs:
           indices=$(python - <<'PY'
           import json
           data = json.load(open('mardu-opt/experiment.json'))
-          print(' '.join(map(str, range(len(data['matchups'])))))
+          shard = ${{ matrix.shard }}
+          start = shard * 10
+          stop = min(start + 10, len(data['matchups']))
+          print(' '.join(map(str, range(start, stop))))
           PY
           )
           python scripts/run_matchup_batch.py \
             --matchup-indices $indices \
             --config mardu-opt/experiment.json \
             --forge-jar "forge-${FORGE_VERSION}.jar" \
-            --output mardu-opt-results
+            --output mardu-opt-results-${{ matrix.shard }}
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: mardu-optimization-results
+          name: mardu-optimization-results-${{ matrix.shard }}
           path: |
-            mardu-opt-results/
+            mardu-opt-results-${{ matrix.shard }}/
             mardu-opt/*.dck
             mardu-opt/experiment.json
           if-no-files-found: warn
