@@ -1,6 +1,9 @@
 name: Mardu Energy Optimization
 
 on:
+  push:
+    branches:
+      - analysis/mardu-optimization-20260928
   workflow_dispatch:
 
 permissions:
