@@ -1,9 +1,9 @@
-name: Mardu Energy Optimization
+name: Reality Fracture Eldrazi Gauntlet
 
 on:
   push:
     branches:
-      - analysis/mardu-optimization-20260928
+      - analysis/eldrazi-reality-fracture-20260930
   workflow_dispatch:
 
 permissions:
@@ -16,11 +16,11 @@ env:
 jobs:
   simulate:
     runs-on: ubuntu-latest
-    timeout-minutes: 180
+    timeout-minutes: 120
     strategy:
       fail-fast: false
       matrix:
-        shard: [0, 1, 2, 3, 4, 5, 6, 7, 8]
+        matchup: [0, 1, 2, 3, 4, 5]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -39,15 +39,19 @@ jobs:
           tar -xjf forge.tar.bz2
           cp "forge-gui-desktop-${FORGE_VERSION}-jar-with-dependencies.jar" "forge-${FORGE_VERSION}.jar"
           test -s "forge-${FORGE_VERSION}.jar"
-      - name: Generate candidates and config
-        run: python mardu-opt/generate_experiment.py
-      - name: Validate candidate decks
+      - name: Validate deck files
         run: |
           python - <<'PY'
           from pathlib import Path
           from timeless_forge.deck import load_deck, validate_deck
+          paths = [
+            Path('eldrazi-rf/eldrazi-eye.dck'),
+            Path('froganimator-splits/split-grief2.dck'),
+            Path('mardu-opt/stock.dck'),
+            Path('froganimator-splits/show-and-tell.dck'),
+          ]
           failed = False
-          for path in sorted(Path('mardu-opt').glob('*.dck')):
+          for path in paths:
               errors = validate_deck(load_deck(path))
               print(('FAIL ' if errors else 'OK   ') + str(path))
               for error in errors:
@@ -55,29 +59,20 @@ jobs:
               failed |= bool(errors)
           raise SystemExit(int(failed))
           PY
-      - name: Run paired-orientation comparison
+      - name: Run matchup
         run: |
-          indices=$(python - <<'PY'
-          import json
-          data = json.load(open('mardu-opt/experiment.json'))
-          shard = ${{ matrix.shard }}
-          start = shard * 10
-          stop = min(start + 10, len(data['matchups']))
-          print(' '.join(map(str, range(start, stop))))
-          PY
-          )
           python scripts/run_matchup_batch.py \
-            --matchup-indices $indices \
-            --config mardu-opt/experiment.json \
+            --matchup-indices ${{ matrix.matchup }} \
+            --config eldrazi-rf/experiment.json \
             --forge-jar "forge-${FORGE_VERSION}.jar" \
-            --output mardu-opt-results-${{ matrix.shard }}
+            --output eldrazi-rf-results-${{ matrix.matchup }}
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: mardu-optimization-results-${{ matrix.shard }}
+          name: eldrazi-rf-results-${{ matrix.matchup }}
           path: |
-            mardu-opt-results-${{ matrix.shard }}/
-            mardu-opt/*.dck
-            mardu-opt/experiment.json
+            eldrazi-rf-results-${{ matrix.matchup }}/
+            eldrazi-rf/*.dck
+            eldrazi-rf/experiment.json
           if-no-files-found: warn
           retention-days: 30
