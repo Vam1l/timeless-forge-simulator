@@ -1,0 +1,39 @@
+{
+  "name": "Reality Fracture Eldrazi vs user gauntlet 2026-09-30",
+  "deck_dir": ".",
+  "games_preboard": 200,
+  "games_postboard": 0,
+  "clock_seconds": 120,
+  "matchups": [
+    {
+      "name": "eldrazi-vs-bug",
+      "deck_a": "eldrazi-rf/eldrazi-eye.dck",
+      "deck_b": "froganimator-splits/split-grief2.dck"
+    },
+    {
+      "name": "bug-vs-eldrazi",
+      "deck_a": "froganimator-splits/split-grief2.dck",
+      "deck_b": "eldrazi-rf/eldrazi-eye.dck"
+    },
+    {
+      "name": "eldrazi-vs-mardu",
+      "deck_a": "eldrazi-rf/eldrazi-eye.dck",
+      "deck_b": "mardu-opt/stock.dck"
+    },
+    {
+      "name": "mardu-vs-eldrazi",
+      "deck_a": "mardu-opt/stock.dck",
+      "deck_b": "eldrazi-rf/eldrazi-eye.dck"
+    },
+    {
+      "name": "eldrazi-vs-showtell",
+      "deck_a": "eldrazi-rf/eldrazi-eye.dck",
+      "deck_b": "froganimator-splits/show-and-tell.dck"
+    },
+    {
+      "name": "showtell-vs-eldrazi",
+      "deck_a": "froganimator-splits/show-and-tell.dck",
+      "deck_b": "eldrazi-rf/eldrazi-eye.dck"
+    }
+  ]
+}
