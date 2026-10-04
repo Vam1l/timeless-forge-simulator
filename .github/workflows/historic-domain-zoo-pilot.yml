@@ -1,0 +1,143 @@
+name: Historic Domain Zoo Forge Pilot
+
+on:
+  push:
+    branches: [historic-domain-zoo-forge]
+    paths:
+      - 'historic-domain-zoo/**'
+      - '.github/workflows/historic-domain-zoo-pilot.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  FORGE_VERSION: '2.0.14'
+  JAVA_VERSION: '17'
+  GAMES_PER_ORIENTATION: '25'
+
+jobs:
+  simulate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: historic-domain-zoo-forge
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: ${{ env.JAVA_VERSION }}
+
+      - name: Install Xvfb
+        run: sudo apt-get update && sudo apt-get install -y xvfb
+
+      - name: Download Forge
+        run: |
+          set -euo pipefail
+          curl --fail --location --retry 3 \
+            "https://github.com/Card-Forge/forge/releases/download/forge-${FORGE_VERSION}/forge-installer-${FORGE_VERSION}.tar.bz2" \
+            --output forge.tar.bz2
+          tar -xjf forge.tar.bz2
+          cp "forge-gui-desktop-${FORGE_VERSION}-jar-with-dependencies.jar" "forge-${FORGE_VERSION}.jar"
+          test -s "forge-${FORGE_VERSION}.jar"
+
+      - name: Run orientation-balanced pilot
+        shell: bash
+        run: |
+          set -u
+          mkdir -p zoo-results/logs
+          printf 'variant,opponent,orientation,requested,exit_code\n' > zoo-results/run-status.csv
+
+          variants=(
+            domain-zoo-baseline.dck
+            domain-zoo-thanos.dck
+            domain-zoo-interaction.dck
+            domain-zoo-drc.dck
+          )
+          opponents=(
+            dimir-tempo-stress.dck
+            mardu-energy-stress.dck
+          )
+
+          for variant in "${variants[@]}"; do
+            for opponent in "${opponents[@]}"; do
+              for orientation in AB BA; do
+                if [[ "$orientation" == "AB" ]]; then
+                  a="$variant"; b="$opponent"
+                else
+                  a="$opponent"; b="$variant"
+                fi
+                stem="${variant%.dck}__${opponent%.dck}__${orientation}"
+                log="zoo-results/logs/${stem}.log"
+                echo "=== $stem ==="
+                set +e
+                xvfb-run -a java -jar "forge-${FORGE_VERSION}.jar" sim \
+                  -d "$a" "$b" \
+                  -D "$GITHUB_WORKSPACE/historic-domain-zoo" \
+                  -n "$GAMES_PER_ORIENTATION" -q -c 120 >"$log" 2>&1
+                rc=$?
+                set -e
+                printf '%s,%s,%s,%s,%s\n' "$variant" "$opponent" "$orientation" "$GAMES_PER_ORIENTATION" "$rc" >> zoo-results/run-status.csv
+                tail -n 40 "$log" || true
+              done
+            done
+          done
+
+      - name: Build summary
+        if: always()
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import csv, re
+
+          root = Path('zoo-results/logs')
+          winner_patterns = (
+              re.compile(r'(?im)^(.+?)\s+(?:has won|wins the game|won the game)\b'),
+              re.compile(r'(?im)^Winner:\s*(.+?)\s*$'),
+          )
+          rows=[]
+          for p in sorted(root.glob('*.log')):
+              text=p.read_text(errors='replace')
+              winners=[]
+              for pat in winner_patterns:
+                  winners=[m.strip().lower() for m in pat.findall(text)]
+                  if winners: break
+              name=p.stem
+              variant, opponent, orientation=name.split('__')
+              vstem=variant.lower()
+              ostem=opponent.lower()
+              vw=sum(vstem in w for w in winners)
+              ow=sum(ostem in w for w in winners)
+              rows.append({
+                  'variant':variant,'opponent':opponent,'orientation':orientation,
+                  'variant_wins':vw,'opponent_wins':ow,'parsed':vw+ow,
+                  'unparsed':max(0,25-vw-ow),
+                  'variant_win_rate': (vw/(vw+ow) if vw+ow else 0.0),
+              })
+          with open('zoo-results/summary.csv','w',newline='') as f:
+              w=csv.DictWriter(f,fieldnames=list(rows[0]) if rows else ['variant'])
+              w.writeheader(); w.writerows(rows)
+
+          agg={}
+          for r in rows:
+              key=(r['variant'],r['opponent'])
+              d=agg.setdefault(key,[0,0,0])
+              d[0]+=r['variant_wins']; d[1]+=r['opponent_wins']; d[2]+=r['unparsed']
+          lines=['# Historic Domain Zoo Forge Pilot','','25 games per orientation; 50 games per variant/opponent pairing.','','| Variant | Opponent | Zoo wins | Opp wins | Zoo win rate | Unparsed |','|---|---|---:|---:|---:|---:|']
+          for (v,o),(vw,ow,u) in sorted(agg.items()):
+              decisive=vw+ow
+              rate=vw/decisive if decisive else 0
+              lines.append(f'| {v} | {o} | {vw} | {ow} | {rate:.1%} | {u} |')
+          Path('zoo-results/summary.md').write_text('\n'.join(lines)+'\n')
+          print(Path('zoo-results/summary.md').read_text())
+          PY
+
+      - name: Upload results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: historic-domain-zoo-forge-pilot
+          path: zoo-results/
+          retention-days: 30
