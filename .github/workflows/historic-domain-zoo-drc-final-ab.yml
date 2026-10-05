@@ -1,0 +1,154 @@
+name: Historic Domain Zoo DRC Final A-B
+
+on:
+  push:
+    branches: [historic-domain-zoo-forge]
+    paths:
+      - '.github/workflows/historic-domain-zoo-drc-final-ab.yml'
+  workflow_dispatch:
+
+env:
+  FORGE_VERSION: '2.0.14'
+  JAVA_VERSION: '17'
+  GAMES_PER_ORIENTATION: '100'
+
+jobs:
+  simulate:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: historic-domain-zoo-forge
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: ${{ env.JAVA_VERSION }}
+
+      - name: Install Xvfb
+        run: sudo apt-get update && sudo apt-get install -y xvfb
+
+      - name: Download Forge
+        run: |
+          set -euo pipefail
+          curl --fail --location --retry 3 \
+            "https://github.com/Card-Forge/forge/releases/download/forge-${FORGE_VERSION}/forge-installer-${FORGE_VERSION}.tar.bz2" \
+            --output forge.tar.bz2
+          tar -xjf forge.tar.bz2
+          cp "forge-gui-desktop-${FORGE_VERSION}-jar-with-dependencies.jar" "forge-${FORGE_VERSION}.jar"
+
+      - name: Install decks into Forge
+        run: |
+          set -euo pipefail
+          mkdir -p "$HOME/.forge/decks/constructed"
+          cp historic-domain-zoo/*.dck "$HOME/.forge/decks/constructed/"
+
+      - name: Run DRC final orientation-balanced A-B
+        run: |
+          set -u
+          mkdir -p drc-final-results/logs
+          printf 'variant,opponent,orientation,requested,exit_code\n' > drc-final-results/run-status.csv
+          variants=(
+            domain-zoo-drc.dck
+            domain-zoo-drc-no-phlage.dck
+            domain-zoo-drc-thanos.dck
+          )
+          opponents=(
+            dimir-tempo-stress.dck
+            mardu-energy-stress.dck
+          )
+          for variant in "${variants[@]}"; do
+            for opponent in "${opponents[@]}"; do
+              for orientation in AB BA; do
+                if [[ "$orientation" == "AB" ]]; then a="$variant"; b="$opponent"; else a="$opponent"; b="$variant"; fi
+                stem="${variant%.dck}__${opponent%.dck}__${orientation}"
+                log="drc-final-results/logs/${stem}.log"
+                echo "=== $stem ==="
+                set +e
+                xvfb-run -a java -jar "forge-${FORGE_VERSION}.jar" sim \
+                  -d "$a" "$b" -n "$GAMES_PER_ORIENTATION" -q -c 120 >"$log" 2>&1
+                rc=$?
+                set -e
+                printf '%s,%s,%s,%s,%s\n' "$variant" "$opponent" "$orientation" "$GAMES_PER_ORIENTATION" "$rc" >> drc-final-results/run-status.csv
+                tail -n 8 "$log" || true
+              done
+            done
+          done
+
+      - name: Build corrected summary
+        env:
+          GAMES: ${{ env.GAMES_PER_ORIENTATION }}
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import csv, os, re, math
+
+          deck_dir=Path('historic-domain-zoo')
+          root=Path('drc-final-results/logs')
+          requested=int(os.environ['GAMES'])
+
+          def deck_name(stem):
+              text=(deck_dir/f'{stem}.dck').read_text(errors='replace')
+              m=re.search(r'(?m)^Name=(.+)$', text)
+              return m.group(1).strip() if m else stem
+
+          def wilson(w,n,z=1.96):
+              if n == 0: return (0.0,0.0)
+              p=w/n
+              d=1+z*z/n
+              c=(p+z*z/(2*n))/d
+              h=z*math.sqrt((p*(1-p)+z*z/(4*n))/n)/d
+              return c-h,c+h
+
+          rows=[]
+          pat=re.compile(r'(?m)^Match Result:\s+(.+?):\s+(\d+)\s+(.+?):\s+(\d+)\s*$')
+          bad_patterns=('Could not load deck','match cannot start','No deck found')
+          for p in sorted(root.glob('*.log')):
+              variant, opponent, orientation=p.stem.split('__')
+              vname,oname=deck_name(variant),deck_name(opponent)
+              text=p.read_text(errors='replace')
+              bad=[x for x in bad_patterns if x.lower() in text.lower()]
+              matches=pat.findall(text)
+              vw=ow=0
+              if matches:
+                  n1,w1,n2,w2=matches[-1]
+                  scores={n1.strip():int(w1), n2.strip():int(w2)}
+                  for name,score in scores.items():
+                      if vname in name: vw=score
+                      elif oname in name: ow=score
+              parsed=vw+ow
+              rows.append({'variant':variant,'opponent':opponent,'orientation':orientation,'variant_wins':vw,'opponent_wins':ow,'parsed':parsed,'unparsed':max(0,requested-parsed),'bad_log':';'.join(bad)})
+
+          with open('drc-final-results/summary.csv','w',newline='') as f:
+              w=csv.DictWriter(f,fieldnames=list(rows[0]))
+              w.writeheader(); w.writerows(rows)
+
+          agg={}; overall={}
+          for r in rows:
+              key=(r['variant'],r['opponent'])
+              d=agg.setdefault(key,[0,0,0,[]]); d[0]+=r['variant_wins']; d[1]+=r['opponent_wins']; d[2]+=r['unparsed']; d[3].append(r['bad_log'])
+              q=overall.setdefault(r['variant'],[0,0,0]); q[0]+=r['variant_wins']; q[1]+=r['opponent_wins']; q[2]+=r['unparsed']
+
+          lines=['# Historic Domain Zoo DRC Final A/B','',f'{requested} games per orientation; {requested*2} games per variant/opponent pairing.','', '| Variant | Opponent | Zoo wins | Opp wins | Win rate | 95% CI | Unparsed |','|---|---|---:|---:|---:|---:|---:|']
+          for (v,o),(vw,ow,u,bads) in sorted(agg.items()):
+              n=vw+ow; rate=vw/n if n else 0; lo,hi=wilson(vw,n)
+              lines.append(f'| {v} | {o} | {vw} | {ow} | {rate:.1%} | {lo:.1%}–{hi:.1%} | {u} |')
+          lines += ['', '## Combined', '', '| Variant | Zoo wins | Opp wins | Win rate | 95% CI | Unparsed |','|---|---:|---:|---:|---:|---:|']
+          for v,(vw,ow,u) in sorted(overall.items()):
+              n=vw+ow; rate=vw/n if n else 0; lo,hi=wilson(vw,n)
+              lines.append(f'| {v} | {vw} | {ow} | {rate:.1%} | {lo:.1%}–{hi:.1%} | {u} |')
+          Path('drc-final-results/summary.md').write_text('\n'.join(lines)+'\n')
+          print(Path('drc-final-results/summary.md').read_text())
+
+          bad=[r for r in rows if r['unparsed'] or r['bad_log']]
+          if bad:
+              print('WARNING: invalid or incomplete batches detected:')
+              for r in bad: print(r)
+          PY
+
+      - name: Upload results
+        uses: actions/upload-artifact@v4
+        with:
+          name: historic-domain-zoo-drc-final-ab
+          path: drc-final-results/
+          retention-days: 30
