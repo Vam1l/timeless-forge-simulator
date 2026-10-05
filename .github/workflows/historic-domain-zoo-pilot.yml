@@ -1,4 +1,4 @@
-name: Historic Domain Zoo Forge Pilot
+name: Historic Domain Zoo Forge Targeted A-B
 
 on:
   push:
@@ -14,7 +14,7 @@ permissions:
 env:
   FORGE_VERSION: '2.0.14'
   JAVA_VERSION: '17'
-  GAMES_PER_ORIENTATION: '25'
+  GAMES_PER_ORIENTATION: '50'
 
 jobs:
   simulate:
@@ -43,14 +43,14 @@ jobs:
           cp "forge-gui-desktop-${FORGE_VERSION}-jar-with-dependencies.jar" "forge-${FORGE_VERSION}.jar"
           test -s "forge-${FORGE_VERSION}.jar"
 
-      - name: Install pilot decks into Forge deck directory
+      - name: Install decks into Forge
         run: |
           set -euo pipefail
           mkdir -p "$HOME/.forge/decks/constructed"
           cp historic-domain-zoo/*.dck "$HOME/.forge/decks/constructed/"
           ls -la "$HOME/.forge/decks/constructed"
 
-      - name: Run orientation-balanced pilot
+      - name: Run targeted orientation-balanced A-B
         shell: bash
         run: |
           set -u
@@ -59,9 +59,11 @@ jobs:
 
           variants=(
             domain-zoo-baseline.dck
+            domain-zoo-no-might.dck
             domain-zoo-thanos.dck
-            domain-zoo-interaction.dck
+            domain-zoo-no-phlage.dck
             domain-zoo-drc.dck
+            domain-zoo-drs.dck
           )
           opponents=(
             dimir-tempo-stress.dck
@@ -86,56 +88,74 @@ jobs:
                 rc=$?
                 set -e
                 printf '%s,%s,%s,%s,%s\n' "$variant" "$opponent" "$orientation" "$GAMES_PER_ORIENTATION" "$rc" >> zoo-results/run-status.csv
-                tail -n 40 "$log" || true
+                tail -n 8 "$log" || true
               done
             done
           done
 
-      - name: Build summary
+      - name: Build corrected summary
         if: always()
+        env:
+          GAMES: ${{ env.GAMES_PER_ORIENTATION }}
         run: |
           python - <<'PY'
           from pathlib import Path
-          import csv, re
+          import csv, os, re
 
+          deck_dir = Path('historic-domain-zoo')
           root = Path('zoo-results/logs')
-          winner_patterns = (
-              re.compile(r'(?im)^(.+?)\s+(?:has won|wins the game|won the game)\b'),
-              re.compile(r'(?im)^Winner:\s*(.+?)\s*$'),
-          )
+          requested = int(os.environ['GAMES'])
+
+          def deck_name(stem):
+              path = deck_dir / f'{stem}.dck'
+              text = path.read_text(errors='replace')
+              m = re.search(r'(?m)^Name=(.+)$', text)
+              return m.group(1).strip() if m else stem
+
           rows=[]
+          pat = re.compile(r'(?m)^Match Result:\s+(.+?):\s+(\d+)\s+(.+?):\s+(\d+)\s*$')
           for p in sorted(root.glob('*.log')):
-              text=p.read_text(errors='replace')
-              winners=[]
-              for pat in winner_patterns:
-                  winners=[m.strip().lower() for m in pat.findall(text)]
-                  if winners: break
-              name=p.stem
-              variant, opponent, orientation=name.split('__')
-              vstem=variant.lower()
-              ostem=opponent.lower()
-              vw=sum(vstem in w for w in winners)
-              ow=sum(ostem in w for w in winners)
+              variant, opponent, orientation = p.stem.split('__')
+              vname, oname = deck_name(variant), deck_name(opponent)
+              matches = pat.findall(p.read_text(errors='replace'))
+              vw=ow=0
+              if matches:
+                  n1,w1,n2,w2 = matches[-1]
+                  scores = {n1.strip():int(w1), n2.strip():int(w2)}
+                  for name, score in scores.items():
+                      if vname in name: vw=score
+                      elif oname in name: ow=score
+              parsed=vw+ow
               rows.append({
                   'variant':variant,'opponent':opponent,'orientation':orientation,
-                  'variant_wins':vw,'opponent_wins':ow,'parsed':vw+ow,
-                  'unparsed':max(0,25-vw-ow),
-                  'variant_win_rate': (vw/(vw+ow) if vw+ow else 0.0),
+                  'variant_wins':vw,'opponent_wins':ow,'parsed':parsed,
+                  'unparsed':max(0,requested-parsed),
+                  'variant_win_rate': (vw/parsed if parsed else 0.0),
               })
+
           with open('zoo-results/summary.csv','w',newline='') as f:
               w=csv.DictWriter(f,fieldnames=list(rows[0]) if rows else ['variant'])
               w.writeheader(); w.writerows(rows)
 
           agg={}
+          overall={}
           for r in rows:
               key=(r['variant'],r['opponent'])
               d=agg.setdefault(key,[0,0,0])
               d[0]+=r['variant_wins']; d[1]+=r['opponent_wins']; d[2]+=r['unparsed']
-          lines=['# Historic Domain Zoo Forge Pilot','','25 games per orientation; 50 games per variant/opponent pairing.','','| Variant | Opponent | Zoo wins | Opp wins | Zoo win rate | Unparsed |','|---|---|---:|---:|---:|---:|']
+              q=overall.setdefault(r['variant'],[0,0,0])
+              q[0]+=r['variant_wins']; q[1]+=r['opponent_wins']; q[2]+=r['unparsed']
+
+          lines=['# Historic Domain Zoo Targeted A/B','','50 games per orientation; 100 games per variant/opponent pairing.','','| Variant | Opponent | Zoo wins | Opp wins | Zoo win rate | Unparsed |','|---|---|---:|---:|---:|---:|']
           for (v,o),(vw,ow,u) in sorted(agg.items()):
               decisive=vw+ow
               rate=vw/decisive if decisive else 0
               lines.append(f'| {v} | {o} | {vw} | {ow} | {rate:.1%} | {u} |')
+          lines += ['', '## Combined', '', '| Variant | Zoo wins | Opp wins | Zoo win rate | Unparsed |', '|---|---:|---:|---:|---:|']
+          for v,(vw,ow,u) in sorted(overall.items()):
+              decisive=vw+ow
+              rate=vw/decisive if decisive else 0
+              lines.append(f'| {v} | {vw} | {ow} | {rate:.1%} | {u} |')
           Path('zoo-results/summary.md').write_text('\n'.join(lines)+'\n')
           print(Path('zoo-results/summary.md').read_text())
           PY
@@ -144,6 +164,6 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: historic-domain-zoo-forge-pilot
+          name: historic-domain-zoo-targeted-ab
           path: zoo-results/
           retention-days: 30
