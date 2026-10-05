@@ -1,0 +1,112 @@
+name: Historic Domain Zoo Card Usage Audit
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [historic-domain-zoo-forge]
+    paths:
+      - '.github/workflows/historic-domain-zoo-audit.yml'
+
+permissions:
+  contents: read
+
+env:
+  FORGE_VERSION: '2.0.14'
+  JAVA_VERSION: '17'
+  GAMES_PER_ORIENTATION: '20'
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: historic-domain-zoo-forge
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: ${{ env.JAVA_VERSION }}
+
+      - name: Install Xvfb
+        run: sudo apt-get update && sudo apt-get install -y xvfb
+
+      - name: Download Forge
+        run: |
+          set -euo pipefail
+          curl --fail --location --retry 3 \
+            "https://github.com/Card-Forge/forge/releases/download/forge-${FORGE_VERSION}/forge-installer-${FORGE_VERSION}.tar.bz2" \
+            --output forge.tar.bz2
+          tar -xjf forge.tar.bz2
+          cp "forge-gui-desktop-${FORGE_VERSION}-jar-with-dependencies.jar" "forge-${FORGE_VERSION}.jar"
+
+      - name: Install decks into Forge
+        run: |
+          set -euo pipefail
+          mkdir -p "$HOME/.forge/decks/constructed"
+          cp historic-domain-zoo/*.dck "$HOME/.forge/decks/constructed/"
+
+      - name: Run verbose audit games
+        shell: bash
+        run: |
+          set -u
+          mkdir -p audit-results/logs
+          variants=(domain-zoo-baseline.dck domain-zoo-thanos.dck domain-zoo-drs.dck)
+          opponents=(dimir-tempo-stress.dck mardu-energy-stress.dck)
+          for variant in "${variants[@]}"; do
+            for opponent in "${opponents[@]}"; do
+              for orientation in AB BA; do
+                if [[ "$orientation" == "AB" ]]; then a="$variant"; b="$opponent"; else a="$opponent"; b="$variant"; fi
+                stem="${variant%.dck}__${opponent%.dck}__${orientation}"
+                log="audit-results/logs/${stem}.log"
+                echo "=== $stem ==="
+                set +e
+                xvfb-run -a java -jar "forge-${FORGE_VERSION}.jar" sim \
+                  -d "$a" "$b" -n "$GAMES_PER_ORIENTATION" -c 120 >"$log" 2>&1
+                rc=$?
+                set -e
+                echo "$stem,$rc" >> audit-results/status.csv
+              done
+            done
+          done
+
+      - name: Extract card usage evidence
+        if: always()
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import re
+          cards = ["Thanos, the Mad Titan", "Phlage, Titan of Fire's Fury", "Deathrite Shaman"]
+          root = Path('audit-results/logs')
+          out=[]
+          out.append('# Historic Domain Zoo Card Usage Audit')
+          out.append('')
+          for card in cards:
+              out += [f'## {card}', '']
+              total=0
+              for p in sorted(root.glob('*.log')):
+                  text=p.read_text(errors='replace')
+                  hits=[]
+                  for i,line in enumerate(text.splitlines(),1):
+                      if card.lower() in line.lower():
+                          hits.append((i,line.strip()))
+                  if hits:
+                      total += len(hits)
+                      out.append(f'### {p.name} ({len(hits)} mentions)')
+                      for i,line in hits[:80]:
+                          out.append(f'- L{i}: {line}')
+                      out.append('')
+              out.append(f'Total raw mentions: {total}')
+              out.append('')
+          Path('audit-results/card-usage-audit.md').write_text('\n'.join(out)+'\n')
+          print(Path('audit-results/card-usage-audit.md').read_text())
+          PY
+
+      - name: Upload audit results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: historic-domain-zoo-card-usage-audit
+          path: audit-results/
+          retention-days: 30
