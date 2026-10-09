@@ -1,0 +1,29 @@
+{
+  "name": "Froganimator Grief3 Reanimate4 A/B",
+  "deck_dir": ".",
+  "games_preboard": 40,
+  "games_postboard": 0,
+  "clock_seconds": 120,
+  "matchups": [
+    {"name":"baseline-vs-pure","deck_a":"froganimator-splits/split-grief2.dck","deck_b":"froganimator-splits/pure-sultai.dck"},
+    {"name":"pure-vs-baseline","deck_a":"froganimator-splits/pure-sultai.dck","deck_b":"froganimator-splits/split-grief2.dck"},
+    {"name":"baseline-vs-mardu","deck_a":"froganimator-splits/split-grief2.dck","deck_b":"froganimator-splits/mardu-energy.dck"},
+    {"name":"mardu-vs-baseline","deck_a":"froganimator-splits/mardu-energy.dck","deck_b":"froganimator-splits/split-grief2.dck"},
+    {"name":"baseline-vs-snt","deck_a":"froganimator-splits/split-grief2.dck","deck_b":"froganimator-splits/show-and-tell.dck"},
+    {"name":"snt-vs-baseline","deck_a":"froganimator-splits/show-and-tell.dck","deck_b":"froganimator-splits/split-grief2.dck"},
+    {"name":"baseline-vs-reanimator","deck_a":"froganimator-splits/split-grief2.dck","deck_b":"froganimator-splits/reanimator.dck"},
+    {"name":"reanimator-vs-baseline","deck_a":"froganimator-splits/reanimator.dck","deck_b":"froganimator-splits/split-grief2.dck"},
+
+    {"name":"candidate-vs-pure","deck_a":"froganimator-ab/grief3-reanimate4.dck","deck_b":"froganimator-splits/pure-sultai.dck"},
+    {"name":"pure-vs-candidate","deck_a":"froganimator-splits/pure-sultai.dck","deck_b":"froganimator-ab/grief3-reanimate4.dck"},
+    {"name":"candidate-vs-mardu","deck_a":"froganimator-ab/grief3-reanimate4.dck","deck_b":"froganimator-splits/mardu-energy.dck"},
+    {"name":"mardu-vs-candidate","deck_a":"froganimator-splits/mardu-energy.dck","deck_b":"froganimator-ab/grief3-reanimate4.dck"},
+    {"name":"candidate-vs-snt","deck_a":"froganimator-ab/grief3-reanimate4.dck","deck_b":"froganimator-splits/show-and-tell.dck"},
+    {"name":"snt-vs-candidate","deck_a":"froganimator-splits/show-and-tell.dck","deck_b":"froganimator-ab/grief3-reanimate4.dck"},
+    {"name":"candidate-vs-reanimator","deck_a":"froganimator-ab/grief3-reanimate4.dck","deck_b":"froganimator-splits/reanimator.dck"},
+    {"name":"reanimator-vs-candidate","deck_a":"froganimator-splits/reanimator.dck","deck_b":"froganimator-ab/grief3-reanimate4.dck"},
+
+    {"name":"candidate-vs-baseline","deck_a":"froganimator-ab/grief3-reanimate4.dck","deck_b":"froganimator-splits/split-grief2.dck","games_preboard":50},
+    {"name":"baseline-vs-candidate","deck_a":"froganimator-splits/split-grief2.dck","deck_b":"froganimator-ab/grief3-reanimate4.dck","games_preboard":50}
+  ]
+}
