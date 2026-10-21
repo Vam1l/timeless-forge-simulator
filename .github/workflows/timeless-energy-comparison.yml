@@ -46,7 +46,7 @@ jobs:
           for a,b in itertools.combinations(names,2):
               for left,right in [(a,b),(b,a)]:
                   pairings.append({"name":left+"-vs-"+right,"deck_a":left+".dck","deck_b":right+".dck","games_preboard":100})
-          (root/"config.json").write_text(json.dumps({"name":"Timeless Energy four-build comparison","deck_dir":".","games_preboard":100,"games_postboard":0,"clock_seconds":120,"matchups":pairings},indent=2))
+          (root/"config.json").write_text(json.dumps({"name":"Timeless Energy four-build comparison","deck_dir":"energy-comparison","games_preboard":100,"games_postboard":0,"clock_seconds":120,"matchups":pairings},indent=2))
           PY
       - name: Run Forge matchup
         run: |
