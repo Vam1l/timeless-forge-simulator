@@ -1,0 +1,71 @@
+name: Timeless Energy Verbose Rules Audit
+on:
+  push:
+    paths:
+      - '.github/workflows/timeless-energy-verbose-audit.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  verbose-audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 50
+    strategy:
+      fail-fast: false
+      matrix:
+        pair: [mardu-phlage, mardu-lurrus]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: sudo apt-get update && sudo apt-get install -y xvfb unzip
+      - name: Install Forge 2.0.14
+        run: |
+          curl --fail --location --retry 3 "https://github.com/Card-Forge/forge/releases/download/forge-2.0.14/forge-installer-2.0.14.tar.bz2" -o forge.tar.bz2
+          tar -xjf forge.tar.bz2
+          cp forge-gui-desktop-2.0.14-jar-with-dependencies.jar forge-2.0.14.jar
+      - name: Load exact decks from prior verified run artifact
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          curl --fail --location --retry 3 -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github+json" "https://api.github.com/repos/$GITHUB_REPOSITORY/actions/artifacts/12332675019/zip" -o previous.zip
+          unzip -q previous.zip -d prior
+          test -s prior/energy-comparison/mardu-energy.dck
+          test -s prior/energy-comparison/boros-phlage-ring.dck
+          test -s prior/energy-comparison/boros-lurrus.dck
+      - name: Verbose Forge AI game logs
+        env:
+          PAIR: ${{ matrix.pair }}
+        run: |
+          mkdir -p verbose-results
+          python - <<'PY'
+          import json,os,re,subprocess
+          from pathlib import Path
+          deckdir=Path('prior/energy-comparison').resolve()
+          pair=os.environ['PAIR']
+          foe='boros-phlage-ring.dck' if pair=='mardu-phlage' else 'boros-lurrus.dck'
+          data={}
+          for orientation,(a,b) in enumerate([('mardu-energy.dck',foe),(foe,'mardu-energy.dck')]):
+              cmd=['xvfb-run','-a','java','-jar',str(Path('forge-2.0.14.jar').resolve()),'sim','-d',a,b,'-D',str(deckdir),'-n','10','-c','120']
+              result=subprocess.run(cmd,stdout=subprocess.PIPE,stderr=subprocess.STDOUT,text=True,timeout=1100)
+              log=result.stdout
+              (Path('verbose-results')/f'{pair}-{orientation}.log').write_text(log)
+              entries=re.findall(r'Game Result: Game (\d+) ended in \d+ ms\. (.*?) has won!',log)
+              warnings=re.findall(r"(?m)^.*(?:SVar 'ConvertedManaCost'|Exception|ERROR|NotImplemented|unsupported).*$",log)
+              data[str(orientation)]={'command':cmd,'exit_code':result.returncode,'games_reported':len(entries),'winners':entries,'warning_count':len(warnings),'warning_examples':warnings[:30],'log_lines':len(log.splitlines()),'verbose_action_lines':sum(bool(re.search(r'(?i)\b(?:casts|activates|attacks|blocks|trigger|resolves)\b',line)) for line in log.splitlines())}
+          (Path('verbose-results')/(pair+'-audit.json')).write_text(json.dumps(data,indent=2))
+          print(json.dumps(data,indent=2))
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: verbose-audit-${{ matrix.pair }}
+          path: verbose-results/
+          if-no-files-found: warn
+          retention-days: 30
