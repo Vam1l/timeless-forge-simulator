@@ -40,13 +40,13 @@ jobs:
           decks={"boros-original":"4 Guide of Souls\n4 Ocelot Pride\n2 Static Prison\n3 Swords to Plowshares\n3 Galvanic Discharge\n1 Lithomantic Barrage\n4 Ragavan, Nimble Pilferer\n4 Ajani, Nacatl Pariah\n4 Voice of Victory\n4 Amped Raptor\n3 Goblin Bombardment\n2 Hexing Squelcher\n1 Plains\n1 Mountain\n1 Elegant Parlor\n4 Inspiring Vantage\n4 Sacred Foundry\n4 Arid Mesa\n1 Bloodstained Mire\n2 Flooded Strand\n4 Strip Mine","boros-lurrus":"4 Guide of Souls\n4 Ocelot Pride\n2 Static Prison\n4 Swords to Plowshares\n3 Galvanic Discharge\n4 Ragavan, Nimble Pilferer\n4 Ajani, Nacatl Pariah\n4 Voice of Victory\n4 Amped Raptor\n2 Goblin Bombardment\n3 Hexing Squelcher\n1 Plains\n1 Mountain\n1 Elegant Parlor\n4 Inspiring Vantage\n4 Sacred Foundry\n4 Arid Mesa\n1 Bloodstained Mire\n2 Flooded Strand\n4 Strip Mine","boros-phlage-ring":"4 Guide of Souls\n4 Ocelot Pride\n2 Static Prison\n3 Swords to Plowshares\n3 Galvanic Discharge\n2 Ragavan, Nimble Pilferer\n4 Ajani, Nacatl Pariah\n2 Voice of Victory\n4 Amped Raptor\n2 Goblin Bombardment\n2 Hexing Squelcher\n1 Plains\n1 Mountain\n1 Elegant Parlor\n4 Inspiring Vantage\n4 Sacred Foundry\n4 Arid Mesa\n1 Bloodstained Mire\n2 Flooded Strand\n4 Strip Mine\n3 Phlage, Titan of Fire's Fury\n3 The One Ring"}
           for name,cards in decks.items():
               (root/(name+".dck")).write_text("[metadata]\nName="+name+"\n\n[Main]\n"+cards+"\n\n[Sideboard]\n")
-          (root/"mardu-energy.dck").write_bytes(Path("mardu-energy.dck").read_bytes())
+          (root/"mardu-energy.dck").write_text("[metadata]\\nName=Mardu Aggro Screenshot Oct 2026\\n\\n[Main]\\n"+4 Guide of Souls\n4 Ocelot Pride\n2 Static Prison\n4 Swords to Plowshares\n2 Thoughtseize\n2 Ragavan, Nimble Pilferer\n4 Ajani, Nacatl Pariah\n4 Orcish Bowmasters\n4 Amped Raptor\n3 Goblin Bombardment\n4 Juggernaut Peddler\n1 Plains\n1 Swamp\n2 Godless Shrine\n1 Blood Crypt\n1 Elegant Parlor\n2 Sacred Foundry\n4 Arid Mesa\n3 Bloodstained Mire\n4 Marsh Flats\n4 Strip Mine+"\\n\\n[Sideboard]\\n1 Lurrus of the Dream-Den\\n")
           names=list(decks)+["mardu-energy"]
           pairings=[]
           for a,b in itertools.combinations(names,2):
               for left,right in [(a,b),(b,a)]:
                   pairings.append({"name":left+"-vs-"+right,"deck_a":left+".dck","deck_b":right+".dck","games_preboard":100})
-          (root/"config.json").write_text(json.dumps({"name":"Timeless Energy four-build comparison","deck_dir":"energy-comparison","games_preboard":100,"games_postboard":0,"clock_seconds":120,"matchups":pairings},indent=2))
+          (root/"config.json").write_text(json.dumps({"name":"Timeless Energy comparison with screenshot Mardu Aggro","deck_dir":"energy-comparison","games_preboard":100,"games_postboard":0,"clock_seconds":120,"matchups":pairings},indent=2))
           PY
       - name: Run Forge matchup
         run: |
