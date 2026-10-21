@@ -1,0 +1,63 @@
+name: Timeless Boros Mardu Energy Comparison
+on:
+  push:
+    paths:
+      - '.github/workflows/timeless-energy-comparison.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  compare:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      matrix:
+        index: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Install headless dependencies
+        run: sudo apt-get update && sudo apt-get install -y xvfb
+      - name: Download Forge 2.0.14
+        run: |
+          curl --fail --location --retry 3 "https://github.com/Card-Forge/forge/releases/download/forge-2.0.14/forge-installer-2.0.14.tar.bz2" -o forge.tar.bz2
+          tar -xjf forge.tar.bz2
+          cp forge-gui-desktop-2.0.14-jar-with-dependencies.jar forge-2.0.14.jar
+      - name: Generate reproducible matchup inputs
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import json,itertools
+          root=Path("energy-comparison")
+          root.mkdir(exist_ok=True)
+          decks={"boros-original":"4 Guide of Souls\n4 Ocelot Pride\n2 Static Prison\n3 Swords to Plowshares\n3 Galvanic Discharge\n1 Lithomantic Barrage\n4 Ragavan, Nimble Pilferer\n4 Ajani, Nacatl Pariah\n4 Voice of Victory\n4 Amped Raptor\n3 Goblin Bombardment\n2 Hexing Squelcher\n1 Plains\n1 Mountain\n1 Elegant Parlor\n4 Inspiring Vantage\n4 Sacred Foundry\n4 Arid Mesa\n1 Bloodstained Mire\n2 Flooded Strand\n4 Strip Mine","boros-lurrus":"4 Guide of Souls\n4 Ocelot Pride\n2 Static Prison\n4 Swords to Plowshares\n3 Galvanic Discharge\n4 Ragavan, Nimble Pilferer\n4 Ajani, Nacatl Pariah\n4 Voice of Victory\n4 Amped Raptor\n2 Goblin Bombardment\n3 Hexing Squelcher\n1 Plains\n1 Mountain\n1 Elegant Parlor\n4 Inspiring Vantage\n4 Sacred Foundry\n4 Arid Mesa\n1 Bloodstained Mire\n2 Flooded Strand\n4 Strip Mine","boros-phlage-ring":"4 Guide of Souls\n4 Ocelot Pride\n2 Static Prison\n3 Swords to Plowshares\n3 Galvanic Discharge\n2 Ragavan, Nimble Pilferer\n4 Ajani, Nacatl Pariah\n2 Voice of Victory\n4 Amped Raptor\n2 Goblin Bombardment\n2 Hexing Squelcher\n1 Plains\n1 Mountain\n1 Elegant Parlor\n4 Inspiring Vantage\n4 Sacred Foundry\n4 Arid Mesa\n1 Bloodstained Mire\n2 Flooded Strand\n4 Strip Mine\n3 Phlage, Titan of Fire's Fury\n3 The One Ring"}
+          for name,cards in decks.items():
+              (root/(name+".dck")).write_text("[metadata]\nName="+name+"\n\n[Main]\n"+cards+"\n\n[Sideboard]\n")
+          (root/"mardu-energy.dck").write_bytes(Path("mardu-energy.dck").read_bytes())
+          names=list(decks)+["mardu-energy"]
+          pairings=[]
+          for a,b in itertools.combinations(names,2):
+              for left,right in [(a,b),(b,a)]:
+                  pairings.append({"name":left+"-vs-"+right,"deck_a":left+".dck","deck_b":right+".dck","games_preboard":100})
+          (root/"config.json").write_text(json.dumps({"name":"Timeless Energy four-build comparison","deck_dir":".","games_preboard":100,"games_postboard":0,"clock_seconds":120,"matchups":pairings},indent=2))
+          PY
+      - name: Run Forge matchup
+        run: |
+          python scripts/run_matchup_batch.py --config energy-comparison/config.json --matchup-indices ${{ matrix.index }} --forge-jar forge-2.0.14.jar --output "energy-result-${{ matrix.index }}"
+      - name: Upload game logs and summary
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: timeless-energy-${{ matrix.index }}
+          path: |
+            energy-result-${{ matrix.index }}/
+            energy-comparison/
+          if-no-files-found: warn
+          retention-days: 30
